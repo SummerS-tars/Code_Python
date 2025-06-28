@@ -2,23 +2,105 @@
 
 一个简单的 frpc 交互式管理工具，用于管理 FRP 客户端配置和进程。
 
+## 快速开始
+
+### 方法1：自动设置（推荐）
+
+使用提供的设置脚本来自动创建虚拟环境并安装依赖：
+
+**PowerShell（推荐）：**
+
+```powershell
+.\setup_venv.ps1
+```
+
+**命令提示符：**
+
+```cmd
+setup_venv.bat
+```
+
+**高级选项：**
+
+```powershell
+# 强制重新创建虚拟环境
+.\setup_venv.ps1 -Force
+
+# 使用自定义虚拟环境名称
+.\setup_venv.ps1 -VenvName "myenv"
+```
+
+设置完成后，每次使用时只需运行激活脚本：
+
+- **PowerShell**: `.\activate_venv.ps1`
+- **命令提示符**: `activate_venv.bat`
+
+然后运行程序：
+
+```bash
+python FRPController.py
+```
+
+### 方法2：手动设置
+
+1. **创建虚拟环境：**
+
+   ```bash
+   python -m venv venv
+   ```
+
+2. **激活虚拟环境：**
+
+   - Windows: `venv\Scripts\activate`
+   - Linux/Mac: `source venv/bin/activate`
+
+3. **安装依赖：**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **运行程序：**
+
+   ```bash
+   python FRPController.py
+   ```
+
 ## 文件结构
 
 ```txt
 01_frpController/
-├── frpc.exe          # FRP 客户端程序
-├── frpc.toml         # 配置文件
-├── frpcStart.ps1     # PowerShell 启动脚本
-├── FRPController.py  # Python 管理工具
-├── requirements.txt  # Python 依赖
-└── README.md        # 说明文档
+├── frpc.exe             # FRP 客户端程序
+├── frpc.toml            # 配置文件
+├── frpcStart_en.ps1     # PowerShell 启动脚本（英文版）
+├── FRPController.py     # Python 管理工具
+├── requirements.txt     # Python 依赖
+├── setup_venv.ps1       # 虚拟环境设置脚本（PowerShell）
+├── setup_venv.bat       # 虚拟环境设置脚本（批处理）
+├── activate_venv.ps1    # 虚拟环境激活脚本（PowerShell）
+├── activate_venv.bat    # 虚拟环境激活脚本（批处理）
+├── logs/                # 日志文件目录
+├── venv/                # 虚拟环境目录（自动创建）
+└── README.md           # 说明文档
 ```
 
-## 安装依赖
+## 环境要求
 
+- **Python 3.7+** - 确保已安装 Python 并添加到 PATH
+- **Windows 系统** - 此工具专为 Windows 设计
+
+### 依赖安装
+
+**自动安装（推荐）：**
+运行 `setup_venv.ps1` 或 `setup_venv.bat` 会自动安装所有依赖。
+
+**手动安装：**
 ```bash
 pip install -r requirements.txt
 ```
+
+**依赖列表：**
+- `toml` - TOML 配置文件解析
 
 ## 使用方法
 
