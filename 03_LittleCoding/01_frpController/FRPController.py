@@ -49,7 +49,8 @@ class FRPController:
     def __init__(self):
         self.script_dir = get_resource_path()
         self.config_file = self.script_dir / "frpc.toml"
-        self.ps_script = self.script_dir / "frpcStart.ps1"
+        # Use English version to avoid encoding issues
+        self.ps_script = self.script_dir / "frpcStart_en.ps1"
         self.logs_dir = self.script_dir / "logs"
         self.config_data = {}
         self.load_config()
@@ -105,6 +106,51 @@ class FRPController:
             print(f"✗ 加载配置文件失败: {e}")
             self.config_data = {'proxies': []}
 
+    def clean_ansi_codes(self, text: str) -> str:
+        """移除ANSI转义序列"""
+        import re
+        # 移除ANSI转义序列
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', text)
+    
+    def process_temp_logs(self):
+        """处理临时日志文件，清理ANSI代码"""
+        try:
+            if not self.logs_dir.exists():
+                return
+                
+            # 查找最新的临时日志文件
+            temp_files = list(self.logs_dir.glob("*.temp"))
+            if not temp_files:
+                return
+                
+            latest_temp = max(temp_files, key=lambda x: x.stat().st_mtime)
+            final_log = latest_temp.with_suffix('')  # 移除.temp后缀
+            
+            # 读取临时文件并清理ANSI代码
+            if latest_temp.exists():
+                try:
+                    with open(latest_temp, 'r', encoding='utf-8', errors='replace') as f:
+                        content = f.read()
+                    
+                    if content.strip():
+                        cleaned_content = self.clean_ansi_codes(content)
+                        
+                        # 写入到最终日志文件
+                        with open(final_log, 'w', encoding='utf-8') as f:
+                            f.write(cleaned_content)
+                        
+                        print(f"✓ 日志文件已清理并保存到: {final_log.name}")
+                        
+                        # 可选：删除临时文件
+                        # latest_temp.unlink()
+                        
+                except Exception as e:
+                    print(f"⚠ 处理日志文件时出错: {e}")
+                    
+        except Exception as e:
+            print(f"⚠ 日志处理失败: {e}")
+
     def save_config(self):
         """保存配置文件"""
         try:
@@ -131,56 +177,93 @@ class FRPController:
                 "-Action", action
             ]
             
-            # Try multiple encoding strategies
-            encodings_to_try = ['utf-8', 'gbk', 'cp936', 'utf-16', 'latin1']
-            result = None
-            
-            for encoding in encodings_to_try:
+            # For 'start' action, use non-blocking approach
+            if action.lower() == 'start':
+                print("✓ 正在后台启动 frpc...")
                 try:
-                    result = subprocess.run(
-                        cmd, 
-                        capture_output=True, 
-                        text=True, 
-                        encoding=encoding,
-                        errors='replace',  # Replace problematic characters instead of failing
-                        timeout=30  # Add 30 second timeout
+                    # Use Popen for non-blocking execution (UTF-8 for English script)
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace'
                     )
-                    break
-                except (UnicodeDecodeError, subprocess.TimeoutExpired):
-                    continue
-            
-            # If all encodings failed, try with bytes
-            if result is None:
-                try:
-                    result = subprocess.run(cmd, capture_output=True, text=False, timeout=30)
-                    # Decode manually with error handling
-                    stdout = result.stdout.decode('utf-8', errors='replace') if result.stdout else ""
-                    stderr = result.stderr.decode('utf-8', errors='replace') if result.stderr else ""
                     
-                    if stdout:
-                        print(stdout)
-                    if stderr:
-                        print(f"错误: {stderr}")
+                    # Wait longer to allow background job to process initial logs
+                    try:
+                        stdout, stderr = process.communicate(timeout=10)
+                        if stdout:
+                            print(stdout)
+                        if stderr:
+                            print(f"错误: {stderr}")
+                        return process.returncode == 0
+                    except subprocess.TimeoutExpired:
+                        # Process is still running, which is expected for start action
+                        print("✓ frpc 启动命令已发送，进程正在后台运行")
+                        print("✓ 日志处理任务正在后台运行，请稍后查看日志文件")
                         
-                    return result.returncode == 0
-                except subprocess.TimeoutExpired:
-                    print("⚠ PowerShell脚本执行超时，但frpc可能已成功启动")
-                    return True  # Assume success for start operations
+                        # 给PowerShell后台任务一些时间处理日志
+                        import time
+                        time.sleep(3)
+                        
+                        # 作为备份，用Python处理日志文件
+                        print("🔧 正在使用Python备份方案清理日志文件...")
+                        self.process_temp_logs()
+                        
+                        return True
+                        
                 except Exception as e:
-                    print(f"✗ 解码输出失败: {e}")
+                    print(f"✗ 启动失败: {e}")
                     return False
             
-            # Handle timeout case for the main encoding loop
-            if result is None:
-                print("⚠ 所有编码方式都失败或超时，但frpc可能已成功启动")
-                return True  # Assume success for start operations
+            # For other actions (stop, status, etc.), use blocking approach with timeout
+            else:
+                # Try multiple encoding strategies (UTF-8 first for English script)
+                encodings_to_try = ['utf-8', 'gbk', 'cp936', 'utf-16', 'latin1']
+                result = None
                 
-            if result.stdout:
-                print(result.stdout)
-            if result.stderr:
-                print(f"错误: {result.stderr}")
+                for encoding in encodings_to_try:
+                    try:
+                        result = subprocess.run(
+                            cmd, 
+                            capture_output=True, 
+                            text=True, 
+                            encoding=encoding,
+                            errors='replace',
+                            timeout=15  # Shorter timeout for non-start actions
+                        )
+                        break
+                    except (UnicodeDecodeError, subprocess.TimeoutExpired):
+                        continue
                 
-            return result.returncode == 0
+                # If all encodings failed, try with bytes
+                if result is None:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=False, timeout=15)
+                        stdout = result.stdout.decode('utf-8', errors='replace') if result.stdout else ""
+                        stderr = result.stderr.decode('utf-8', errors='replace') if result.stderr else ""
+                        
+                        if stdout:
+                            print(stdout)
+                        if stderr:
+                            print(f"错误: {stderr}")
+                            
+                        return result.returncode == 0
+                    except subprocess.TimeoutExpired:
+                        print("⚠ PowerShell脚本执行超时")
+                        return False
+                    except Exception as e:
+                        print(f"✗ 解码输出失败: {e}")
+                        return False
+                
+                if result and result.stdout:
+                    print(result.stdout)
+                if result and result.stderr:
+                    print(f"错误: {result.stderr}")
+                    
+                return result.returncode == 0 if result else False
             
         except Exception as e:
             print(f"✗ 执行脚本失败: {e}")
@@ -485,6 +568,7 @@ class FRPController:
         print("10. 删除代理")
         print("11. 修改代理")
         print("12. 重新加载配置")
+        print("13. 手动清理日志文件")
         print("0. 退出")
         print("="*50)
 
@@ -496,7 +580,7 @@ class FRPController:
             self.show_menu()
             
             try:
-                choice = input("请选择操作 (0-12): ").strip()
+                choice = input("请选择操作 (0-13): ").strip()
                 
                 if choice == '0':
                     print("退出程序")
@@ -531,6 +615,9 @@ class FRPController:
                 elif choice == '12':
                     print("重新加载配置...")
                     self.load_config()
+                elif choice == '13':
+                    print("手动清理日志文件...")
+                    self.process_temp_logs()
                 else:
                     print("无效选择，请重新输入")
                     
