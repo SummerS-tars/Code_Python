@@ -151,6 +151,98 @@ class FRPController:
         except Exception as e:
             print(f"⚠ 日志处理失败: {e}")
 
+    def cleanup_temp_files(self):
+        """清理临时日志文件"""
+        try:
+            if not self.logs_dir.exists():
+                return
+            
+            # 检查是否有frpc进程正在运行
+            import subprocess
+            try:
+                result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq frpc.exe'], 
+                                      capture_output=True, text=True, timeout=5)
+                if 'frpc.exe' in result.stdout:
+                    print("⚠ 检测到frpc进程正在运行，跳过临时文件清理以避免冲突")
+                    print("ℹ 请在停止frpc后再进行手动清理")
+                    return
+            except:
+                # 如果检查失败，继续执行清理
+                pass
+                
+            # 查找所有临时文件
+            temp_files = list(self.logs_dir.glob("*.temp*"))
+            if not temp_files:
+                print("✓ 没有找到需要清理的临时文件")
+                return
+            
+            cleaned_count = 0
+            skipped_count = 0
+            
+            for temp_file in temp_files:
+                try:
+                    # 获取对应的最终日志文件路径
+                    if temp_file.suffix == '.temp':
+                        final_log = temp_file.with_suffix('')
+                        
+                        # 检查文件是否被占用
+                        try:
+                            # 尝试以独占模式打开文件
+                            with open(temp_file, 'r+', encoding='utf-8', errors='replace') as f:
+                                content = f.read()
+                        except PermissionError:
+                            print(f"  ⏳ 跳过被占用的文件: {temp_file.name}")
+                            skipped_count += 1
+                            continue
+                            
+                        if content.strip():
+                            # 清理ANSI代码
+                            cleaned_content = self.clean_ansi_codes(content)
+                            
+                            # 检查最终日志是否已有内容，避免重复
+                            if final_log.exists():
+                                with open(final_log, 'r', encoding='utf-8', errors='replace') as f:
+                                    existing_content = f.read()
+                                # 如果内容已经存在且相似，跳过
+                                if cleaned_content.strip() in existing_content:
+                                    print(f"  ⏭ 内容已存在，跳过: {temp_file.name}")
+                                    temp_file.unlink()  # 只删除临时文件
+                                    cleaned_count += 1
+                                    continue
+                                    
+                            # 写入到最终日志文件
+                            with open(final_log, 'w', encoding='utf-8') as f:
+                                f.write(cleaned_content)
+                            
+                            print(f"  ✓ 已处理: {temp_file.name}")
+                            cleaned_count += 1
+                        
+                        # 删除临时文件
+                        temp_file.unlink()
+                    
+                    elif temp_file.suffix == '.err' and '.temp' in temp_file.name:
+                        # 直接删除临时错误文件
+                        try:
+                            temp_file.unlink()
+                            print(f"  ✓ 已删除: {temp_file.name}")
+                            cleaned_count += 1
+                        except PermissionError:
+                            print(f"  ⏳ 跳过被占用的错误文件: {temp_file.name}")
+                            skipped_count += 1
+                        
+                except Exception as e:
+                    print(f"  ✗ 处理失败: {temp_file.name} - {e}")
+            
+            if cleaned_count > 0:
+                print(f"✓ 成功清理了 {cleaned_count} 个临时文件")
+            if skipped_count > 0:
+                print(f"ℹ 跳过了 {skipped_count} 个被占用的文件")
+            if cleaned_count == 0 and skipped_count == 0:
+                print("✓ 临时文件清理完成")
+                
+        except Exception as e:
+            print(f"⚠ 临时文件清理失败: {e}")
+
     def save_config(self):
         """保存配置文件"""
         try:
@@ -202,15 +294,8 @@ class FRPController:
                     except subprocess.TimeoutExpired:
                         # Process is still running, which is expected for start action
                         print("✓ frpc 启动命令已发送，进程正在后台运行")
-                        print("✓ 日志处理任务正在后台运行，请稍后查看日志文件")
-                        
-                        # 给PowerShell后台任务一些时间处理日志
-                        import time
-                        time.sleep(3)
-                        
-                        # 作为备份，用Python处理日志文件
-                        print("🔧 正在使用Python备份方案清理日志文件...")
-                        self.process_temp_logs()
+                        print("✓ 日志处理任务正在后台运行，PowerShell将自动清理日志文件")
+                        print("ℹ 如果需要手动清理临时文件，请稍后使用菜单选项13")
                         
                         return True
                         
@@ -232,7 +317,7 @@ class FRPController:
                             text=True, 
                             encoding=encoding,
                             errors='replace',
-                            timeout=15  # Shorter timeout for non-start actions
+                            timeout=25  # Longer timeout for stop operations to allow cleanup
                         )
                         break
                     except (UnicodeDecodeError, subprocess.TimeoutExpired):
@@ -241,7 +326,7 @@ class FRPController:
                 # If all encodings failed, try with bytes
                 if result is None:
                     try:
-                        result = subprocess.run(cmd, capture_output=True, text=False, timeout=15)
+                        result = subprocess.run(cmd, capture_output=True, text=False, timeout=25)
                         stdout = result.stdout.decode('utf-8', errors='replace') if result.stdout else ""
                         stderr = result.stderr.decode('utf-8', errors='replace') if result.stderr else ""
                         
@@ -558,7 +643,7 @@ class FRPController:
         print("="*50)
         print("1. 启动 frpc")
         print("2. 停止 frpc")
-        print("3. 重启 frpc")
+        print("3. 重启 frpc (智能重启)")
         print("4. 查看状态")
         print("5. 查看日志 (PowerShell)")
         print("6. 查看日志文件 (Python)")
@@ -568,7 +653,7 @@ class FRPController:
         print("10. 删除代理")
         print("11. 修改代理")
         print("12. 重新加载配置")
-        print("13. 手动清理日志文件")
+        print("13. 手动清理临时日志文件")
         print("0. 退出")
         print("="*50)
 
@@ -590,10 +675,31 @@ class FRPController:
                     self.run_powershell_script('start')
                 elif choice == '2':
                     print("正在停止 frpc...")
-                    self.run_powershell_script('stop')
+                    success = self.run_powershell_script('stop')
+                    if success:
+                        # Additional cleanup with Python as backup
+                        print("🔧 执行额外的临时文件清理...")
+                        import time
+                        time.sleep(2)  # Wait for PowerShell cleanup to finish
+                        self.cleanup_temp_files()
                 elif choice == '3':
                     print("正在重启 frpc...")
-                    self.run_powershell_script('restart')
+                    print("第1步：停止当前 frpc 进程...")
+                    stop_success = self.run_powershell_script('stop')
+                    if stop_success:
+                        print("🔧 执行临时文件清理...")
+                        import time
+                        time.sleep(2)
+                        self.cleanup_temp_files()
+                        
+                        print("第2步：启动 frpc 进程...")
+                        start_success = self.run_powershell_script('start')
+                        if start_success:
+                            print("✓ frpc 重启完成")
+                        else:
+                            print("✗ frpc 启动失败")
+                    else:
+                        print("✗ frpc 停止失败，取消重启操作")
                 elif choice == '4':
                     print("查看 frpc 状态...")
                     self.run_powershell_script('status')
@@ -616,8 +722,8 @@ class FRPController:
                     print("重新加载配置...")
                     self.load_config()
                 elif choice == '13':
-                    print("手动清理日志文件...")
-                    self.process_temp_logs()
+                    print("手动清理临时日志文件...")
+                    self.cleanup_temp_files()
                 else:
                     print("无效选择，请重新输入")
                     

@@ -1,0 +1,12 @@
+serverAddr = ""
+serverPort = 7000
+[[proxies]]
+name = "Minecraft_Together"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 25570
+remotePort = 25570
+
+[auth]
+method = "token"
+token = ""

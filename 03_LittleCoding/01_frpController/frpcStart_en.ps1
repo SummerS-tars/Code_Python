@@ -97,24 +97,16 @@ function Start-Frpc {
                 return $Text -replace '\x1B\[[0-9;]*[mK]', '' -replace '\[[\d;]*m', ''
             }
             
-            # Process standard output
+            # Process standard output (only when process finishes to avoid duplicates)
             if (Test-Path $TempLog) {
                 while ($true) {
-                    Start-Sleep -Milliseconds 500
-                    try {
-                        $content = Get-Content $TempLog -Raw -ErrorAction SilentlyContinue
-                        if ($content) {
-                            $cleanContent = Remove-AnsiCodes $content
-                            Set-Content -Path $FinalLog -Value $cleanContent -Encoding UTF8
-                        }
-                    } catch {
-                        # File might be locked, continue trying
-                    }
+                    Start-Sleep -Seconds 1
                     
                     # Check if process is still running
                     $runningProcess = Get-Process -Name "frpc" -ErrorAction SilentlyContinue
                     if (-not $runningProcess) {
-                        Start-Sleep -Seconds 2
+                        # Process has ended, now process the log file once
+                        Start-Sleep -Seconds 2  # Wait for final output
                         try {
                             $finalContent = Get-Content $TempLog -Raw -ErrorAction SilentlyContinue
                             if ($finalContent) {
@@ -149,22 +141,9 @@ function Start-Frpc {
         } -ArgumentList $TempLogPath, $LogPath, $TempErrPath, "${LogPath}.err"
         
         # Wait briefly for background task to start
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
         Write-Host "Background log processing task started (Job ID: $($job.Id))" -ForegroundColor Gray
-        
-        # Immediately perform ANSI cleaning to ensure initial content
-        if (Test-Path $TempLogPath) {
-            try {
-                $initialContent = Get-Content $TempLogPath -Raw -ErrorAction SilentlyContinue
-                if ($initialContent) {
-                    $cleanInitialContent = $initialContent -replace '\x1B\[[0-9;]*[mK]', '' -replace '\[[\d;]*m', ''
-                    Set-Content -Path $LogPath -Value $cleanInitialContent -Encoding UTF8
-                    Write-Host "Initial log content cleaned and saved" -ForegroundColor Gray
-                }
-            } catch {
-                Write-Host "Initial log cleaning failed: $($_.Exception.Message)" -ForegroundColor Yellow
-            }
-        }
+        Write-Host "Log cleaning will occur when frpc process ends" -ForegroundColor Gray
     }
     
     if ($process) {
@@ -196,6 +175,41 @@ function Stop-Frpc {
         Write-Host "FRP Client stopped" -ForegroundColor Green
         
         Start-Sleep -Seconds 3
+        
+        # Clean up any remaining temp files after stopping
+        Write-Host "Cleaning up temporary log files..." -ForegroundColor Gray
+        $TempFiles = Get-ChildItem -Path $LogsDir -Filter "*.temp*" -ErrorAction SilentlyContinue
+        foreach ($TempFile in $TempFiles) {
+            try {
+                # Get the corresponding final log file
+                $FinalLogPath = $TempFile.FullName -replace '\.temp.*$', ''
+                
+                # If it's a .temp file (not .temp.err), process the content
+                if ($TempFile.Name -match '\.temp$') {
+                    if (Test-Path $TempFile.FullName) {
+                        $content = Get-Content $TempFile.FullName -Raw -ErrorAction SilentlyContinue
+                        if ($content) {
+                            # Clean ANSI codes
+                            $cleanContent = $content -replace '\x1B\[[0-9;]*[mK]', '' -replace '\[[\d;]*m', ''
+                            # Append to final log if it exists, otherwise create new
+                            if (Test-Path $FinalLogPath) {
+                                Add-Content -Path $FinalLogPath -Value $cleanContent -Encoding UTF8
+                            } else {
+                                Set-Content -Path $FinalLogPath -Value $cleanContent -Encoding UTF8
+                            }
+                            Write-Host "  Processed: $($TempFile.Name)" -ForegroundColor Green
+                        }
+                        Remove-Item $TempFile.FullName -Force -ErrorAction SilentlyContinue
+                    }
+                } else {
+                    # For .temp.err files, just remove them
+                    Remove-Item $TempFile.FullName -Force -ErrorAction SilentlyContinue
+                    Write-Host "  Removed: $($TempFile.Name)" -ForegroundColor Yellow
+                }
+            } catch {
+                Write-Host "  Failed to process: $($TempFile.Name) - $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
         
         $CurrentLogPath = Get-LatestLogPath
         if ($CurrentLogPath -and (Test-Path $CurrentLogPath)) {
