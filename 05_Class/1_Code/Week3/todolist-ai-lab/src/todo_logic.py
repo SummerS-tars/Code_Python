@@ -18,7 +18,9 @@ def filter_tasks(tasks: list[str], keyword: str | None, done_flags: list[bool] |
     return out
 
 def longest_title_length(titles: list[str]) -> int:
-    mx = 0                         # BUG7: empty list not handled
+    if not titles:                 # Fixed: handle empty list by raising ValueError
+        raise ValueError("标题列表不能为空")
+    mx = 0
     for t in titles:
         if len(t) > mx:
             mx = len(t)
