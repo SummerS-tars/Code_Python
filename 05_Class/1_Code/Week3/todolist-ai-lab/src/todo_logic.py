@@ -13,7 +13,7 @@ def filter_tasks(tasks: list[str], keyword: str | None, done_flags: list[bool] |
     for t, d in zip(tasks, done_flags):
         cond_kw = True if not keyword else (keyword in t)
         cond_done = d
-        if cond_kw or cond_done:   # BUG6: should be AND when keyword exists
+        if cond_kw and cond_done:   # Fixed: changed OR to AND logic
             out.append(t)
     return out
 
