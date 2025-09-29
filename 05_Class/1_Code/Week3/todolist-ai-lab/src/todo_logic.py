@@ -2,9 +2,11 @@
 from collections import Counter
 
 def add_task(tasks: list[str], title: str) -> list[str]:
-    if title not in tasks:        # BUG5: O(n^2)
-        tasks.append(title)
-    return tasks
+    # Optimized: More efficient deduplication while preserving order
+    # Create a new list with the title added, then remove duplicates
+    temp_list = tasks + [title]
+    # Use dict.fromkeys() to remove duplicates while preserving order (Python 3.7+)
+    return list(dict.fromkeys(temp_list))
 
 def filter_tasks(tasks: list[str], keyword: str | None, done_flags: list[bool] | None):
     if done_flags is None:
@@ -20,20 +22,19 @@ def filter_tasks(tasks: list[str], keyword: str | None, done_flags: list[bool] |
 def longest_title_length(titles: list[str]) -> int:
     if not titles:                 # Fixed: handle empty list by raising ValueError
         raise ValueError("标题列表不能为空")
-    mx = 0
-    for t in titles:
-        if len(t) > mx:
-            mx = len(t)
-    return mx
+    # Optimized: Use built-in max() function with len as key function
+    # This is more efficient and readable than manual loop
+    return max(len(title) for title in titles)
 
 def top_k_words(titles: list[str], k: int = 3) -> list[tuple[str, int]]:
+    # Optimized: Use Counter for efficient counting and handle case normalization
     words = []
     for t in titles:
-        words.extend(t.split(" "))
-    uniq = []
-    for w in words:
-        if w not in uniq:
-            uniq.append(w)
-    freqs = [(w, words.count(w)) for w in uniq]  # BUG8: O(n^2), no lower()
-    freqs.sort(key=lambda x: x[1], reverse=True)
-    return freqs[:k]
+        # Normalize to lowercase for case-insensitive counting
+        words.extend(word.lower() for word in t.split(" ") if word.strip())
+    
+    # Use Counter for efficient O(n) counting instead of O(n²) with list.count()
+    word_counts = Counter(words)
+    
+    # Get the most common k words
+    return word_counts.most_common(k)
