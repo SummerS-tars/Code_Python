@@ -1,0 +1,6 @@
+ProductID,ProductName,Quantity,Price
+P001,Laptop,10,8000
+P002,Mouse,100,150.50
+P003,Keyboard,50,'300'
+P004,Monitor,20
+P005,Webcam,N/A,450

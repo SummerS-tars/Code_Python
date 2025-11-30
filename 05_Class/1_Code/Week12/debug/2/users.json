@@ -1,0 +1,25 @@
+[
+    {
+        "id": 1,
+        "name": "Alice",
+        "age": 32,
+        "is_active": true
+    },
+    {
+        "id": 2,
+        "name": "Bob",
+        "age": "25",
+        "is_active": false
+    },
+    {
+        "id": 3,
+        "name": "Charlie",
+        "is_active": true
+    },
+    {
+        "id": 4,
+        "name": "Diana",
+        "age": 45,
+        "is_active": true
+    }
+]
