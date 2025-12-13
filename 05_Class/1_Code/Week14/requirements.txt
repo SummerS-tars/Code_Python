@@ -1,0 +1,8 @@
+# Week 14 Lab 13 - 天气爬虫系统依赖
+
+# HTTP 请求库
+requests>=2.31.0
+
+# 可选：更多功能
+# beautifulsoup4>=4.12.0  # 如果需要HTML解析
+# lxml>=4.9.0  # 如果需要XML解析
