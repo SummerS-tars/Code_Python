@@ -10,8 +10,8 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import BOTH, YES, LEFT, RIGHT, X, Y, VERTICAL
 from typing import List, Optional, Tuple, Union, Any
 
-from src.main import MetroPathPlanner
-from src.config import LINE_COLORS
+from main import MetroPathPlanner
+from config import LINE_COLORS
 
 
 def _is_station(obj: Any) -> bool:
