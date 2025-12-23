@@ -3,7 +3,7 @@
 该模块负责解析用户输入，提取起点和终点信息。
 """
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 class InvalidInputError(Exception):
@@ -21,7 +21,7 @@ class Parser:
     """
     
     @staticmethod
-    def parse_input(user_input: str) -> Tuple[Tuple[str, str], Tuple[str, str]]:
+    def parse_input(user_input: str) -> Tuple[Tuple[Optional[str], str], Tuple[Optional[str], str]]:
         """解析用户输入
         
         Args:
@@ -29,7 +29,7 @@ class Parser:
             
         Returns:
             包含起点和终点信息的元组：
-            ((起始线路, 起始站名), (目标线路, 目标站名))
+            ((起始线路或None, 起始站名), (目标线路或None, 目标站名))
             
         Raises:
             InvalidInputError: 输入格式错误时抛出
@@ -63,7 +63,7 @@ class Parser:
             raise InvalidInputError(f"解析输入时出错: {str(e)}")
     
     @staticmethod
-    def _parse_station_info(station_info: str) -> Tuple[str, str]:
+    def _parse_station_info(station_info: str) -> Tuple[Optional[str], str]:
         """解析站点信息
         
         Args:
@@ -75,22 +75,26 @@ class Parser:
         Raises:
             InvalidInputError: 格式错误时抛出
         """
-        # 按"，"或","分割
+        # 情形1：包含分隔符 -> 线路+站名
         if '，' in station_info:
             parts = station_info.split('，')
         elif ',' in station_info:
             parts = station_info.split(',')
         else:
-            raise InvalidInputError(f"站点信息格式错误: {station_info}，应包含'，'或','分隔符")
+            # 情形2：仅站名，线路未知
+            station_only = station_info.strip()
+            if not station_only:
+                raise InvalidInputError(f"线路名和站名不能为空: {station_info}")
+            return None, station_only
         
         if len(parts) != 2:
             raise InvalidInputError(f"站点信息格式错误: {station_info}，应为：线路名，站名")
         
-        line_name = parts[0].strip()
+        line_name = parts[0].strip() or None
         station_name = parts[1].strip()
         
-        if not line_name or not station_name:
-            raise InvalidInputError(f"线路名和站名不能为空: {station_info}")
+        if not station_name:
+            raise InvalidInputError(f"站名不能为空: {station_info}")
         
         return line_name, station_name
     

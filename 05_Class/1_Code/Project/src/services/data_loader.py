@@ -108,12 +108,17 @@ class DataLoader:
         if not transfer_ids_str:
             return []
         
-        try:
-            # 分割并转换为整数
-            ids = [int(id_str.strip()) for id_str in transfer_ids_str.split('/')]
-            return ids
-        except ValueError:
-            raise ValueError(f"换乘站点ID格式错误: {transfer_ids_str}")
+        ids: List[int] = []
+        for id_str in transfer_ids_str.split('/'):
+            token = id_str.strip()
+            if not token:
+                continue
+            try:
+                ids.append(int(token))
+            except ValueError:
+                # 跳过解析失败的ID，避免中断加载
+                continue
+        return ids
     
     def get_network(self) -> MetroNetwork:
         """获取构建的地铁网络
