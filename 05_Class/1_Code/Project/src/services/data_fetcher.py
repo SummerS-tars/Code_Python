@@ -8,7 +8,7 @@ from __future__ import annotations
 import csv
 import os
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 CITY_CODE = "3100"  # 上海
 API_URL = f"http://map.amap.com/service/subway?_1469083453978&srhdata={CITY_CODE}_drw_{{city}}.json"
@@ -20,6 +20,8 @@ class FetchError(Exception):
 
 
 class DataFetcher:
+    LOOP_LINES = ["4号线"]
+
     def __init__(self, city: str = DEFAULT_CITY):
         self.city = city
 
@@ -45,6 +47,45 @@ class DataFetcher:
         except Exception as exc:
             raise FetchError(f"获取数据失败: {exc}") from exc
 
+    def _fix_topology(self, lines: List[Dict]) -> List[Tuple[str, List[Dict]]]:
+        """修复拓扑：闭合环线、分叉重命名并返回标准结构"""
+
+        seen_lines: Dict[str, List[List[str]]] = {}
+        fixed: List[Tuple[str, List[Dict]]] = []
+
+        for line in lines:
+            line_name = line.get("ln")
+            stations = line.get("st", []) or []
+            if not line_name or not stations:
+                continue
+
+            stations_fixed: List[Dict] = list(stations)
+            station_names = [str(st.get("n") or "") for st in stations_fixed]
+
+            # 环线闭合：首尾不同则追加起点副本
+            if line_name in self.LOOP_LINES and station_names:
+                if station_names[0] != station_names[-1]:
+                    first_copy = dict(stations_fixed[0])
+                    first_copy["_loop_closure"] = True
+                    stations_fixed.append(first_copy)
+                    station_names.append(str(first_copy.get("n") or ""))
+
+            # 分叉线路：同名不同序列的重命名
+            base_name = line_name.split("(")[0].strip()
+            existing_sequences = seen_lines.get(base_name, [])
+            final_line_name = line_name
+            if existing_sequences:
+                is_same_sequence = any(seq == station_names for seq in existing_sequences)
+                if not is_same_sequence:
+                    suffix_index = len(existing_sequences)
+                    suffix = "(支线)" if suffix_index == 1 else f"(支线{suffix_index})"
+                    final_line_name = f"{base_name}{suffix}"
+            seen_lines.setdefault(base_name, []).append(station_names)
+
+            fixed.append((final_line_name, stations_fixed))
+
+        return fixed
+
     def process(self, data: Dict) -> List[Dict[str, str]]:
         """将 JSON 转为 CSV 行列表
 
@@ -53,17 +94,24 @@ class DataFetcher:
         if not data or "l" not in data:
             raise FetchError("数据格式不正确：缺少 'l' 字段")
 
-        lines = data["l"]
+        fixed_lines = self._fix_topology(data["l"])
         csv_rows: List[Dict[str, str]] = []
         station_name_map: Dict[str, List[int]] = defaultdict(list)
         all_stations: List[Dict[str, object]] = []
+        dedupe_seen: set[Tuple[str, str]] = set()
 
         current_id = 1
-        for line in lines:
-            line_name = line.get("ln")
-            stations = line.get("st", [])
+        for line_name, stations in fixed_lines:
             for st in stations:
                 st_name = st.get("n")
+                if not st_name:
+                    continue
+                is_loop_closure = bool(st.get("_loop_closure"))
+                key = (line_name, st_name)
+                if key in dedupe_seen and not is_loop_closure:
+                    continue
+                dedupe_seen.add(key)
+
                 station_obj = {
                     "id": current_id,
                     "line": line_name,

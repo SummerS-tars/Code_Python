@@ -95,19 +95,44 @@ class PathFinder:
         
         return path_with_transfer
     
-    def _get_neighbors_with_weight(self, station: Station, strategy: str) -> List[Tuple[Station, int]]:
+    def _get_neighbors_with_weight(self, station: Station, strategy: str) -> List[Tuple[Station, float]]:
         """获取邻居及权重"""
-        neighbors: List[Tuple[Station, int]] = []
+        neighbors: List[Tuple[Station, float]] = []
         # 同线路相邻站，权重始终为1
         if station.prev_station:
-            neighbors.append((station.prev_station, 1))
+            neighbors.append((station.prev_station, 1.0))
         if station.next_station:
-            neighbors.append((station.next_station, 1))
+            neighbors.append((station.next_station, 1.0))
         # 换乘站
         for transfer in station.transfer_stations:
-            weight = 1 if strategy == "min_station" else 1000
+            weight = self._calc_transfer_weight(station, transfer, strategy)
             neighbors.append((transfer, weight))
         return neighbors
+
+    def _extract_main_line(self, line_name: str) -> str:
+        """提取主线名称（去掉支线后缀）"""
+        return line_name.split("(")[0].strip()
+
+    def _is_same_family(self, line_a: str, line_b: str) -> bool:
+        """判定是否属于同一线路族（主线/支线/包含关系）"""
+        if line_a == line_b:
+            return True
+        if line_a in line_b or line_b in line_a:
+            return True
+        return self._extract_main_line(line_a) == self._extract_main_line(line_b)
+
+    def _calc_transfer_weight(self, current: Station, neighbor: Station, strategy: str) -> float:
+        """计算换乘权重，支持同线/同系零代价换乘"""
+        base_weight = 1.0 if strategy == "min_station" else 1000.0
+
+        # 同名换乘（含环线闭合、主线-支线换乘）
+        if current.station_name == neighbor.station_name:
+            if current.line_name == neighbor.line_name:
+                return 0.1
+            if self._is_same_family(current.line_name, neighbor.line_name):
+                return 0.1
+
+        return base_weight
     
     def calculate_transfer_count(self, path: List[Union[Station, str]]) -> int:
         """计算路径中的换乘次数"""
