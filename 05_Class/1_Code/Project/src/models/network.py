@@ -149,6 +149,14 @@ class MetroNetwork:
         if stations:
             return stations[0]
         return None
+
+    def get_all_station_names_with_line(self) -> List[str]:
+        """获取所有站点的"站名 (线路)"描述列表"""
+        names: List[str] = []
+        for stations in self.stations_by_name.values():
+            for station in stations:
+                names.append(f"{station.station_name} ({station.line_name})")
+        return names
     
     def __str__(self) -> str:
         """返回网络的字符串表示
