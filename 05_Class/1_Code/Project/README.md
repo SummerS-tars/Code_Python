@@ -23,6 +23,75 @@
 * **可视化**：
     * GUI 界面根据线路实际颜色（如1号线红色、2号线绿色）绘制站点和连线。
 
+## 架构分析
+
+```mermaid
+graph TD
+    %% 定义样式
+    classDef layer fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef file fill:#e1f5fe,stroke:#0277bd,stroke-width:1px;
+    classDef model fill:#fff9c4,stroke:#fbc02d,stroke-width:1px;
+    classDef ext fill:#eceff1,stroke:#90a4ae,stroke-dasharray: 5 5;
+
+    subgraph UserInteraction [表现层 Presentation Layer]
+        direction TB
+        GUI[gui_app.py<br>Tkinter界面]:::file
+        CLI[main.py<br>命令行交互]:::file
+    end
+
+    subgraph Controller [控制层 Controller Layer]
+        Planner[MetroPathPlanner<br>（in main.py）]:::file
+    end
+
+    subgraph Services [服务层 Service Layer]
+        direction TB
+        Finder[path_finder.py<br>路径查找算法]:::file
+        Loader[data_loader.py<br>数据加载器]:::file
+        Fetcher[data_fetcher.py<br>在线数据爬虫]:::file
+    end
+
+    subgraph DomainModels [模型层 Data Model Layer]
+        direction TB
+        Network[network.py<br>MetroNetwork]:::model
+        Line[line.py<br>Line]:::model
+        Station[station.py<br>Station]:::model
+        
+        Network -->|包含| Line
+        Line -->|包含| Station
+    end
+
+    subgraph Utilities [工具层 Utility Layer]
+        Parser[parser.py<br>输入解析]:::file
+        Formatter[formatter.py<br>输出格式化]:::file
+    end
+
+    subgraph DataStorage [数据持久层 Data Layer]
+        CSVFile[(线路.csv)]:::ext
+        AMAP_API((高德地图API)):::ext
+    end
+
+    %% 关系连线
+    GUI -->|调用| Planner
+    CLI -->|调用| Planner
+
+    Planner -->|使用| Parser
+    Planner -->|使用| Formatter
+    Planner -->|调度| Finder
+    Planner -->|调度| Loader
+    Planner -->|调度| Fetcher
+
+    Loader -->|读取| CSVFile
+    Loader -->|构建| Network
+    
+    Fetcher -->|请求| AMAP_API
+    Fetcher -->|保存| CSVFile
+
+    Finder -->|基于图搜索| Network
+    Finder -->|返回路径| Station
+
+    Network -->|索引| Station
+```
+
 ## 2. 环境依赖与安装
 
 本项目基于 Python 3 开发。
