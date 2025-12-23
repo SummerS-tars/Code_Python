@@ -25,6 +25,8 @@
 
 ## 架构分析
 
+### 架构图
+
 ```mermaid
 graph TD
     %% 定义样式
@@ -92,6 +94,52 @@ graph TD
     Network -->|索引| Station
 ```
 
+### 架构模块详细说明
+
+#### 1. 表现层 (Presentation Layer)
+
+负责与用户交互，接收输入并展示结果。
+
+* **`src/gui_app.py`**: 提供基于 Tkinter 的图形界面。
+    * **功能**: 下拉选择站点、绘制路线图、调用后端接口。
+* **`src/main.py` (CLI部分)**: 提供命令行交互入口。
+    * **功能**: 处理命令行参数、提供 `input()` 循环交互模式。
+
+#### 2. 控制层 (Controller Layer)
+
+系统的核心枢纽，负责协调各个组件。
+
+* **`MetroPathPlanner` (位于 `src/main.py`)**:
+    * **Facade 模式**: 它是整个系统的统一入口类。
+    * **职责**: 初始化系统、调用 `DataLoader` 加载数据、调用 `Parser` 解析用户输入、将处理后的对象传给 `PathFinder` 计算、最后调用 `Formatter` 格式化输出。
+
+#### 3. 服务层 (Service Layer)
+
+包含核心业务逻辑。
+
+* **`src/services/path_finder.py`**: 核心算法引擎。
+    * **功能**: 实现 Dijkstra 最短路径算法。
+    * **策略**: 支持 `min_station` (最少站点) 和 `min_transfer` (最少换乘) 权重计算。
+* **`src/services/data_loader.py`**: 数据构建者。
+    * **功能**: 读取 CSV 文件，解析站点和换乘关系，实例化模型对象，构建完整的 `MetroNetwork` 图结构。
+* **`src/services/data_fetcher.py`**: 数据获取服务。
+    * **功能**: 从高德地图 API 抓取 JSON 数据，处理环线闭合、支线命名等拓扑问题，并将清洗后的数据保存为 CSV。
+
+#### 4. 模型层 (Data Model Layer)
+
+定义内存中的数据结构 (`src/models/`)。
+
+* **`MetroNetwork`**: 代表整个地铁网，持有所有线路和站点的索引。
+* **`Line`**: 代表一条线路，管理站点的有序列表。
+* **`Station`**: 最小单元，存储 ID、名称、邻居节点（前一站、后一站）以及换乘节点。
+
+#### 5. 工具层 (Utility Layer)
+
+提供通用的辅助功能 (`src/utils/`)。
+
+* **`parser.py`**: 负责字符串处理，将用户的自然语言输入（如 "10号线，交通大学"）转化为结构化的元组。
+* **`formatter.py`**: 负责将路径列表（List of Stations）转化为人类可读的字符串或摘要信息。
+
 ## 2. 环境依赖与安装
 
 本项目基于 Python 3 开发。
@@ -133,7 +181,7 @@ python src/main.py
 
 进入程序后，按提示输入查询。例如输入：`18号线，复旦大学-10号线，交通大学`。
 
-## 4. 📂 项目结构
+## 4. 项目结构
 
 ```text
 project_root/
