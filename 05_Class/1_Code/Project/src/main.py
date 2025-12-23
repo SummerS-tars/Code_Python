@@ -50,8 +50,8 @@ class MetroPathPlanner:
             print(self.formatter.format_error(f"加载数据失败: {str(e)}"))
             return False
     
-    def find_route(self, start_line: str, start_station: str, 
-                   end_line: str, end_station: str) -> str:
+    def find_route(self, start_line: Optional[str], start_station: str, 
+                   end_line: Optional[str], end_station: str, strategy: str = "min_station") -> str:
         """查找路径
         
         Args:
@@ -59,6 +59,7 @@ class MetroPathPlanner:
             start_station: 起始站名
             end_line: 目标线路
             end_station: 目标站名
+            strategy: 路径策略（"min_station" 最少站点 / "min_transfer" 最少换乘）
             
         Returns:
             格式化的路径字符串
@@ -67,21 +68,48 @@ class MetroPathPlanner:
             if self.network is None:
                 return self.formatter.format_error("系统未初始化，请先加载数据")
             
-            # 查找起点和终点站
-            start = self.network.find_station(start_line, start_station)
-            if not start:
+            # 起点处理
+            start = None
+            if start_line:
+                start = self.network.find_station(start_line, start_station)
+            else:
+                # 无线路名时，尝试精确站名匹配任意线路
+                start = self.network.get_station_any_line(start_station)
+                if start is None:
+                    # 尝试模糊搜索
+                    candidates = self.network.search_stations(start_station)
+                    if len(candidates) == 1:
+                        start = candidates[0]
+                    elif len(candidates) > 1:
+                        options = '，'.join(str(s) for s in candidates)
+                        return self.formatter.format_error(
+                            f"起点存在多个匹配，请指定线路或更精确站名：{options}")
+            if start is None:
                 return self.formatter.format_error(
-                    f"未找到站点: {start_line}，{start_station}"
+                    f"未找到起点站: {start_station}"
                 )
-            
-            end = self.network.find_station(end_line, end_station)
-            if not end:
+
+            # 终点处理
+            end = None
+            if end_line:
+                end = self.network.find_station(end_line, end_station)
+            else:
+                end = self.network.get_station_any_line(end_station)
+                if end is None:
+                    candidates = self.network.search_stations(end_station)
+                    if len(candidates) == 1:
+                        end = candidates[0]
+                    elif len(candidates) > 1:
+                        options = '，'.join(str(s) for s in candidates)
+                        return self.formatter.format_error(
+                            f"终点存在多个匹配，请指定线路或更精确站名：{options}")
+            if end is None:
                 return self.formatter.format_error(
-                    f"未找到站点: {end_line}，{end_station}"
+                    f"未找到终点站: {end_station}"
                 )
             
             # 查找路径
-            path = self.path_finder.find_path(start, end)
+            path = self.path_finder.find_path(start, end, strategy=strategy)
             
             # 格式化输出
             return self.formatter.format_path(path)

@@ -116,6 +116,39 @@ class MetroNetwork:
             站点总数
         """
         return len(self.stations_by_id)
+
+    def search_stations(self, keyword: str) -> List[Station]:
+        """根据关键字模糊搜索站点名称
+        
+        Args:
+            keyword: 关键字（大小写敏感度与原始数据一致，中文直接包含匹配）
+        
+        Returns:
+            名称包含关键字的所有站点列表
+        """
+        keyword = keyword.strip()
+        if not keyword:
+            return []
+        matches: List[Station] = []
+        for stations in self.stations_by_name.values():
+            for station in stations:
+                if keyword in station.station_name:
+                    matches.append(station)
+        return matches
+
+    def get_station_any_line(self, station_name: str) -> Optional[Station]:
+        """在未指定线路时返回该站名对应的任意一个站点
+        
+        Args:
+            station_name: 站名
+        
+        Returns:
+            对应的任意一个站点对象；若不存在则返回 None
+        """
+        stations = self.stations_by_name.get(station_name)
+        if stations:
+            return stations[0]
+        return None
     
     def __str__(self) -> str:
         """返回网络的字符串表示
