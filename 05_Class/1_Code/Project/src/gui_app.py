@@ -46,6 +46,8 @@ class MetroGUI:
         btn_frame = tk.Frame(root, padx=12, pady=6)
         btn_frame.pack(fill=tk.X)
         tk.Button(btn_frame, text="查询", command=self.on_search, width=12).pack(side=tk.LEFT)
+        tk.Button(btn_frame, text="更新数据", command=self.on_update_data, width=12).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_frame, text="查看线路图", command=self.on_view_network, width=12).pack(side=tk.LEFT)
 
         # 结果区
         result_frame = tk.LabelFrame(root, text="结果", padx=10, pady=8)
@@ -71,6 +73,33 @@ class MetroGUI:
             self._set_result(result)
         except Exception as e:
             messagebox.showerror("错误", str(e))
+
+    def on_update_data(self):
+        result = self.planner.update_data_online()
+        messagebox.showinfo("更新结果", result)
+        # 更新下拉列表数据
+        if self.planner.network:
+            self.all_station_options = self.planner.network.get_all_station_names_with_line()
+            self.entry_start['values'] = self.all_station_options
+            self.entry_end['values'] = self.all_station_options
+
+    def on_view_network(self):
+        if not self.planner.network:
+            messagebox.showwarning("提示", "请先加载数据")
+            return
+        win = tk.Toplevel(self.root)
+        win.title("线路与站点")
+        tree = ttk.Treeview(win)
+        tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
+        scrollbar = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        tree.heading('#0', text='线路 / 站点')
+        for line_name, line in self.planner.network.lines.items():
+            line_id = tree.insert('', 'end', text=line_name)
+            for st in line.stations:
+                tree.insert(line_id, 'end', text=st.station_name)
 
     def _set_result(self, text: str):
         self.result_text.delete(1.0, tk.END)

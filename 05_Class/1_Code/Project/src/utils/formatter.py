@@ -75,6 +75,11 @@ class Formatter:
             格式化后的错误消息
         """
         return f"错误: {error_message}"
+
+    @staticmethod
+    def format_info(message: str) -> str:
+        """格式化提示消息"""
+        return f"提示: {message}"
     
     @staticmethod
     def format_welcome() -> str:

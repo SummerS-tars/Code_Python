@@ -14,6 +14,7 @@ sys.path.insert(0, current_dir)
 from models.station import Station
 from models.network import MetroNetwork
 from services.data_loader import DataLoader, DataLoadError
+from services.data_fetcher import DataFetcher, FetchError
 from services.path_finder import PathFinder, PathNotFoundError
 from utils.parser import Parser, InvalidInputError
 from utils.formatter import Formatter
@@ -34,6 +35,7 @@ class MetroPathPlanner:
         self.path_finder = PathFinder()
         self.parser = Parser()
         self.formatter = Formatter()
+        self.data_fetcher = DataFetcher()
     
     def load_data(self) -> bool:
         """加载地铁数据
@@ -118,6 +120,20 @@ class MetroPathPlanner:
             return self.formatter.format_error(str(e))
         except Exception as e:
             return self.formatter.format_error(f"查找路径时出错: {str(e)}")
+
+    def update_data_online(self) -> str:
+        """在线更新数据并重新加载"""
+        try:
+            output_path = self.data_file
+            self.data_fetcher.fetch_and_save(output_path)
+            # 更新后重新加载
+            if self.load_data():
+                return self.formatter.format_info("数据已更新并重新加载")
+            return self.formatter.format_error("数据下载成功但重载失败")
+        except FetchError as e:
+            return self.formatter.format_error(str(e))
+        except Exception as e:
+            return self.formatter.format_error(f"更新数据失败: {str(e)}")
     
     def process_user_input(self, user_input: str) -> str:
         """处理用户输入
