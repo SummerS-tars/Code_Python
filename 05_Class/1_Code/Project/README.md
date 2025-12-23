@@ -23,9 +23,33 @@
 * **可视化**：
     * GUI 界面根据线路实际颜色（如1号线红色、2号线绿色）绘制站点和连线。
 
-## 架构分析
+## 2. 架构分析
 
-### 架构图
+### 2.1. 项目结构
+
+```text
+project_root/
+├── doc/                        # 数据存储目录
+│   └── 线路.csv                 # 地铁线路数据文件（自动生成）
+├── src/                        # 源代码目录
+│   ├── config.py               # 配置文件（路径、线路颜色等）
+│   ├── main.py                 # CLI 入口程序
+│   ├── gui_app.py              # GUI 入口程序
+│   ├── models/                 # 数据模型层
+│   │   ├── line.py             # 线路类
+│   │   ├── station.py          # 站点类
+│   │   └── network.py          # 网络图类
+│   ├── services/               # 业务逻辑层
+│   │   ├── data_fetcher.py     # 在线数据抓取
+│   │   ├── data_loader.py      # CSV 数据加载
+│   │   └── path_finder.py      # 路径搜索算法 (Dijkstra)
+│   └── utils/                  # 工具层
+│       ├── parser.py           # 输入解析
+│       └── formatter.py        # 输出格式化
+└── README.md                   # 说明文档
+```
+
+### 2.2. 架构图
 
 ```mermaid
 graph TD
@@ -94,9 +118,9 @@ graph TD
     Network -->|索引| Station
 ```
 
-### 架构模块详细说明
+### 2.3. 架构模块详细说明
 
-#### 1. 表现层 (Presentation Layer)
+#### 2.3.1. 表现层 (Presentation Layer)
 
 负责与用户交互，接收输入并展示结果。
 
@@ -105,7 +129,7 @@ graph TD
 * **`src/main.py` (CLI部分)**: 提供命令行交互入口。
     * **功能**: 处理命令行参数、提供 `input()` 循环交互模式。
 
-#### 2. 控制层 (Controller Layer)
+#### 2.3.2. 控制层 (Controller Layer)
 
 系统的核心枢纽，负责协调各个组件。
 
@@ -113,7 +137,7 @@ graph TD
     * **Facade 模式**: 它是整个系统的统一入口类。
     * **职责**: 初始化系统、调用 `DataLoader` 加载数据、调用 `Parser` 解析用户输入、将处理后的对象传给 `PathFinder` 计算、最后调用 `Formatter` 格式化输出。
 
-#### 3. 服务层 (Service Layer)
+#### 2.3.3. 服务层 (Service Layer)
 
 包含核心业务逻辑。
 
@@ -125,7 +149,7 @@ graph TD
 * **`src/services/data_fetcher.py`**: 数据获取服务。
     * **功能**: 从高德地图 API 抓取 JSON 数据，处理环线闭合、支线命名等拓扑问题，并将清洗后的数据保存为 CSV。
 
-#### 4. 模型层 (Data Model Layer)
+#### 2.3.4. 模型层 (Data Model Layer)
 
 定义内存中的数据结构 (`src/models/`)。
 
@@ -133,18 +157,18 @@ graph TD
 * **`Line`**: 代表一条线路，管理站点的有序列表。
 * **`Station`**: 最小单元，存储 ID、名称、邻居节点（前一站、后一站）以及换乘节点。
 
-#### 5. 工具层 (Utility Layer)
+#### 2.3.5. 工具层 (Utility Layer)
 
 提供通用的辅助功能 (`src/utils/`)。
 
 * **`parser.py`**: 负责字符串处理，将用户的自然语言输入（如 "10号线，交通大学"）转化为结构化的元组。
 * **`formatter.py`**: 负责将路径列表（List of Stations）转化为人类可读的字符串或摘要信息。
 
-## 2. 环境依赖与安装
+## 3. 环境依赖与安装
 
 本项目基于 Python 3 开发。
 
-### 2.1. 安装依赖
+### 3.1. 安装依赖
 
 项目依赖 `requests` 用于数据抓取，`ttkbootstrap` 用于美化 GUI 界面。
 
@@ -155,9 +179,9 @@ pip install -r requirements.txt
 
 > **注意**：如果不安装 `ttkbootstrap`，GUI 界面可能无法启动，但命令行模式仍可部分运行（取决于具体导入依赖情况）。建议完整安装。
 
-## 3. 运行指南
+## 4. 运行指南
 
-### 3.1. 启动图形界面 (GUI)
+### 4.1. 启动图形界面 (GUI)
 
 这是最直观的使用方式。
 
@@ -169,7 +193,7 @@ python src/gui_app.py
 * **更新数据**：点击“更新数据”按钮可在线下载最新线路信息。
 * **查看全网**：点击“查看线路图”可浏览所有线路和站点列表。
 
-### 3.2. 启动命令行 (CLI)
+### 4.2. 启动命令行 (CLI)
 
 命令行模式将被弃用，此处仅记录接口，不推荐使用  
 
@@ -181,29 +205,7 @@ python src/main.py
 
 进入程序后，按提示输入查询。例如输入：`18号线，复旦大学-10号线，交通大学`。
 
-## 4. 项目结构
 
-```text
-project_root/
-├── doc/                        # 数据存储目录
-│   └── 线路.csv                 # 地铁线路数据文件（自动生成）
-├── src/                        # 源代码目录
-│   ├── config.py               # 配置文件（路径、线路颜色等）
-│   ├── main.py                 # CLI 入口程序
-│   ├── gui_app.py              # GUI 入口程序
-│   ├── models/                 # 数据模型层
-│   │   ├── line.py             # 线路类
-│   │   ├── station.py          # 站点类
-│   │   └── network.py          # 网络图类
-│   ├── services/               # 业务逻辑层
-│   │   ├── data_fetcher.py     # 在线数据抓取
-│   │   ├── data_loader.py      # CSV 数据加载
-│   │   └── path_finder.py      # 路径搜索算法 (Dijkstra)
-│   └── utils/                  # 工具层
-│       ├── parser.py           # 输入解析
-│       └── formatter.py        # 输出格式化
-└── README.md                   # 说明文档
-```
 
 ## 5. 核心算法与逻辑
 
