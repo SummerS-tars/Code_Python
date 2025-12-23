@@ -5,7 +5,7 @@
 
 import sys
 import os
-from typing import Optional
+from typing import Optional, List, Union
 
 # 添加src目录到路径，以便导入模块
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -67,59 +67,52 @@ class MetroPathPlanner:
             格式化的路径字符串
         """
         try:
-            if self.network is None:
-                return self.formatter.format_error("系统未初始化，请先加载数据")
-            
-            # 起点处理
-            start = None
-            if start_line:
-                start = self.network.find_station(start_line, start_station)
-            else:
-                # 无线路名时，尝试精确站名匹配任意线路
-                start = self.network.get_station_any_line(start_station)
-                if start is None:
-                    # 尝试模糊搜索
-                    candidates = self.network.search_stations(start_station)
-                    if len(candidates) == 1:
-                        start = candidates[0]
-                    elif len(candidates) > 1:
-                        options = '，'.join(str(s) for s in candidates)
-                        return self.formatter.format_error(
-                            f"起点存在多个匹配，请指定线路或更精确站名：{options}")
-            if start is None:
-                return self.formatter.format_error(
-                    f"未找到起点站: {start_station}"
-                )
-
-            # 终点处理
-            end = None
-            if end_line:
-                end = self.network.find_station(end_line, end_station)
-            else:
-                end = self.network.get_station_any_line(end_station)
-                if end is None:
-                    candidates = self.network.search_stations(end_station)
-                    if len(candidates) == 1:
-                        end = candidates[0]
-                    elif len(candidates) > 1:
-                        options = '，'.join(str(s) for s in candidates)
-                        return self.formatter.format_error(
-                            f"终点存在多个匹配，请指定线路或更精确站名：{options}")
-            if end is None:
-                return self.formatter.format_error(
-                    f"未找到终点站: {end_station}"
-                )
-            
-            # 查找路径
-            path = self.path_finder.find_path(start, end, strategy=strategy)
-            
-            # 格式化输出
+            path = self.get_route(start_line, start_station, end_line, end_station, strategy)
             return self.formatter.format_path(path)
-            
         except PathNotFoundError as e:
             return self.formatter.format_error(str(e))
         except Exception as e:
             return self.formatter.format_error(f"查找路径时出错: {str(e)}")
+
+    def get_route(self, start_line: Optional[str], start_station: str,
+                  end_line: Optional[str], end_station: str, strategy: str = "min_station") -> List[Union[Station, str]]:
+        """返回原始路径对象列表（含 Station 和 "换乘" 字符串）"""
+        if self.network is None:
+            raise ValueError("系统未初始化，请先加载数据")
+
+        # 起点处理
+        start = None
+        if start_line:
+            start = self.network.find_station(start_line, start_station)
+        else:
+            start = self.network.get_station_any_line(start_station)
+            if start is None:
+                candidates = self.network.search_stations(start_station)
+                if len(candidates) == 1:
+                    start = candidates[0]
+                elif len(candidates) > 1:
+                    options = '，'.join(str(s) for s in candidates)
+                    raise ValueError(f"起点存在多个匹配，请指定线路或更精确站名：{options}")
+        if start is None:
+            raise ValueError(f"未找到起点站: {start_station}")
+
+        # 终点处理
+        end = None
+        if end_line:
+            end = self.network.find_station(end_line, end_station)
+        else:
+            end = self.network.get_station_any_line(end_station)
+            if end is None:
+                candidates = self.network.search_stations(end_station)
+                if len(candidates) == 1:
+                    end = candidates[0]
+                elif len(candidates) > 1:
+                    options = '，'.join(str(s) for s in candidates)
+                    raise ValueError(f"终点存在多个匹配，请指定线路或更精确站名：{options}")
+        if end is None:
+            raise ValueError(f"未找到终点站: {end_station}")
+
+        return self.path_finder.find_path(start, end, strategy=strategy)
 
     def update_data_online(self) -> str:
         """在线更新数据并重新加载"""
