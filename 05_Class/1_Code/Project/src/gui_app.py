@@ -3,6 +3,7 @@
 提供桌面界面：起终点输入、策略选择、结果展示，并复用 MetroPathPlanner 作为后端。
 """
 
+import re
 import tkinter as tk
 from tkinter import messagebox, ttk
 import ttkbootstrap as tb
@@ -188,19 +189,25 @@ class MetroGUI:
         if not raw:
             return None, ""
 
-        if raw.endswith(')') and '(' in raw:
-            try:
-                name_part, line_part = raw.rsplit('(', 1)
-                station_name = name_part.strip()
-                line_name = line_part.rstrip(')').strip()
-                if station_name and line_name:
-                    return line_name, station_name
-            except ValueError:
-                pass
+        # FIX: 使用正则匹配，正确处理 "10号线(支线)" 这种带内部括号的情况
+        # 匹配规则：以 " (" 开头，中间是线路名，以 ")" 结尾
+        # ^(.*) 捕获前面的站名
+        # \((.*)\)$ 捕获最后括号内的线路名
+        match = re.match(r"^(.*) \((.*)\)$", raw)
+        
+        if match:
+            station_name = match.group(1).strip()
+            line_name = match.group(2).strip()
+            return line_name, station_name
 
-        # 默认返回纯站名，线路交由后端模糊/任意匹配
+        # 旧逻辑（已废弃，无法处理嵌套括号）
+        # if raw.endswith(')') and '(' in raw:
+        #     try:
+        #         name_part, line_part = raw.rsplit('(', 1)
+        #         ...
+        
+        # 默认返回纯站名
         return None, raw
-
 
 def main():
     planner = MetroPathPlanner()
