@@ -225,3 +225,95 @@ Data Preprocessing
 
 PandasAI：基于大语言模型（如 GPT-4）构建的库，旨在简化数据分析过程。  
 使得用户能够通过自然语言直接与数据交互，实现自动清洗和查询等功能。  
+
+## 3. 课件13：API开发实战
+
+通过程序与互联网服务进行数据交互  
+
+### 3.1. HTTP API
+
+API本质：  
+Application Programming Interface，应用程序编程接口。  
+标准化的通信协议和数据格式  
+
+HTTP协议基础：  
+
+- 请求结构：  
+    - 请求行
+        方法、URL  
+        常用方法：  
+        - GET：请求数据。
+        - POST：提交数据。
+        - PUT：更新数据。
+        - DELETE：删除数据。
+        Python `requests` 库会自动处理URL的参数编码  
+        URL：  
+        - 协议（http/https）  
+        - 主机名（域名或IP地址）  
+        - 路径  
+        - 查询参数  
+    - 请求头  
+        例如User-Agent、Content-Type等  
+    - 请求体  
+        数据  
+
+- 响应结构：  
+    - 状态行  
+        状态码、状态消息  
+        常见状态码：200（成功）、404（未找到）、500（服务器错误）等  
+    - 响应头  
+        例如Content-Type、Content-Length等  
+    - 响应体  
+        数据
+
+### 3.2. 重要库：Requests
+
+Requests：Python中用于发送HTTP请求的第三方库。  
+
+#### 3.2.1. 基础调用
+
+- `requests.get(url, params=None, **kwargs)`: 发送GET请求。  
+- `requests.post(url, data=None, json=None, **kwargs)`: 发送POST请求。  
+
+#### 3.2.2. 进阶配置
+
+- 请求头（Headers）：  
+    通过 `headers` 参数自定义请求头。  
+    伪装`User-Agent` 防止被服务器拒绝访问。  
+- 超时与重试：  
+    通过 `timeout` 参数设置请求超时时间。  
+    否则可能永久阻塞程序  
+    使用 `requests.adapters.HTTPAdapter` 配置重试策略。
+- 会话保持：  
+    `requests.Session()`: 创建会话对象，保持跨请求的参数（如Cookies）。  
+    可以复用连接，提高性能。  
+- SSL验证：  
+    默认验证HTTPS证书，可通过 `verify` 参数禁用验证（不推荐）。  
+    一般仅测试环境禁用绕过  
+
+### 3.3. JSON数据解析与处理
+
+现代Web API通常使用JSON格式传输数据  
+
+处理方法：  
+
+- 自动解析：  
+    `response.json()`: 将响应体解析为Python对象（字典或列表）。  
+- 安全读取：  
+    访问嵌套字典时，使用`.get()` 方法并设置默认值，避免KeyError异常。  
+- 批量提取：  
+    使用列表推导式或循环遍历提取所需字段。  
+- 时间转换：  
+    使用 `datetime` 模块将时间戳转换为可读格式。  
+    例如 `strptime()` 和 `strftime()` 方法。  
+
+### 3.4. 优秀实践方法
+
+1. 异常捕获  
+2. 状态检查  
+3. 数据清洗  
+4. 安全建议：  
+    - 避免在URL中传递敏感信息。  
+    - 使用环境变量或配置文件存储API密钥。  
+        不要将密钥硬编码在代码中。  
+    - 定期更新依赖库，修补安全漏洞。  
