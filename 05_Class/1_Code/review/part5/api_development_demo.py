@@ -229,40 +229,94 @@ def demo_json_processing():
         return
 
     try:
-        # 获取GitHub API数据
-        response = requests.get('https://api.github.com/repos/microsoft/vscode/releases/latest',
+        # 获取GitHub API数据 - 获取最近的几个releases
+        response = requests.get('https://api.github.com/repos/microsoft/vscode/releases?per_page=3',
                               headers={'Accept': 'application/vnd.github.v3+json'},
                               timeout=10)
 
         if response.status_code == 200:
-            data = response.json()
+            releases = response.json()
 
-            print('1. 基础JSON解析：')
-            print(f'项目名称: {data.get("name", "N/A")}')
-            print(f'发布标签: {data.get("tag_name", "N/A")}')
-            print(f'发布日期: {data.get("published_at", "N/A")}')
+            print('1. 列表数据处理 - 多个Release：')
+            print(f'获取到 {len(releases)} 个发布版本')
             print()
+
+            # 处理每个release
+            for i, release in enumerate(releases[:2], 1):  # 只处理前2个release
+                print(f'Release {i}:')
+                print(f'  版本名称: {release.get("name", "N/A")}')
+                print(f'  标签: {release.get("tag_name", "N/A")}')
+                print(f'  发布时间: {release.get("published_at", "N/A")[:10]}')  # 只显示日期部分
+
+                # 处理assets列表
+                assets = release.get('assets', [])
+                if assets:
+                    print(f'  附件数量: {len(assets)}')
+                    print('  附件列表:')
+                    for asset in assets[:2]:  # 只显示前2个附件
+                        print(f'    - {asset.get("name", "N/A")}: {asset.get("download_count", 0)} 次下载')
+                else:
+                    print('  附件数量: 0 (无附件)')
+
+                print()
 
             print('2. 嵌套数据安全访问：')
-            author = data.get('author', {})
-            print(f'发布者: {author.get("login", "N/A")}')
-            print(f'发布者类型: {author.get("type", "N/A")}')
+            if releases:
+                first_release = releases[0]
+                author = first_release.get('author', {})
+                print(f'最新版本发布者: {author.get("login", "N/A")}')
+                print(f'发布者类型: {author.get("type", "N/A")}')
+                print(f'是否为预发布: {first_release.get("prerelease", False)}')
             print()
 
-            print('3. 列表数据处理：')
-            assets = data.get('assets', [])
-            if assets:
-                print('发布资源:')
-                for asset in assets[:3]:  # 只显示前3个
-                    print(f'  - {asset.get("name", "N/A")}: {asset.get("download_count", 0)} 次下载')
+            print('3. 数据聚合统计：')
+            total_reactions = 0
+            reaction_types = {}
+            prerelease_count = 0
+            draft_count = 0
+
+            for release in releases:
+                # 统计reactions
+                reactions = release.get('reactions', {})
+                total_count = reactions.get('total_count', 0)
+                total_reactions += total_count
+
+                # 统计各种reaction类型
+                for reaction_type in ['+1', 'laugh', 'hooray', 'heart', 'rocket', 'eyes']:
+                    count = reactions.get(reaction_type, 0)
+                    reaction_types[reaction_type] = reaction_types.get(reaction_type, 0) + count
+
+                # 统计发布类型
+                if release.get('prerelease', False):
+                    prerelease_count += 1
+                if release.get('draft', False):
+                    draft_count += 1
+
+            print(f'总反应数: {total_reactions}')
+            print(f'预发布版本数: {prerelease_count}')
+            print(f'草稿版本数: {draft_count}')
+            print('各类型反应统计:')
+            for reaction_type, count in reaction_types.items():
+                if count > 0:  # 只显示有反应的类型
+                    emoji_map = {
+                        '+1': '👍',
+                        'laugh': '😄',
+                        'hooray': '🎉',
+                        'heart': '❤️',
+                        'rocket': '🚀',
+                        'eyes': '👀'
+                    }
+                    emoji = emoji_map.get(reaction_type, reaction_type)
+                    print(f'  {emoji} {reaction_type}: {count}')
             print()
 
             print('4. 时间戳转换：')
-            published_at = data.get('published_at')
-            if published_at:
-                # 移除时区信息进行解析
-                dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                print(f'发布日期: {dt.strftime("%Y年%m月%d日 %H:%M:%S")}')
+            if releases:
+                published_at = releases[0].get('published_at')
+                if published_at:
+                    # 移除时区信息进行解析
+                    dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                    print(f'最新版本发布日期: {dt.strftime("%Y年%m月%d日 %H:%M:%S")}')
             print()
 
     except Exception as e:
