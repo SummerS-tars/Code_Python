@@ -59,6 +59,8 @@ random模块
     生成整数序列，常用于for循环。  
     支持start, stop, step参数。  
     语法：range(start, stop[, step])  
+    start默认为0，step默认为1  
+    仅stop不可以缺省  
 
 #### 1.3.1. 循环控制与跳转语句
 
@@ -211,7 +213,7 @@ Python中列表支持存储不同类型的元素。
 序列的高级截取  
 
 语法：  
-`L[start:stp:step]`  
+`L[start:stop:step]`  
 
 核心特性：  
 浅拷贝（Shallow Copy）：切片返回的是原序列的浅拷贝，修改切片不会影响原序列。  
@@ -272,7 +274,7 @@ CRUD：
 - R:  
     - `dict[key]`：通过键访问对应的值。  
         键不存在时抛出KeyError异常。  
-    -`get(key, default)`：通过键访问值，键不存在时返回默认值。  
+    - `get(key, default)`：通过键访问值，键不存在时返回默认值。  
         更安全  
     - `keys()`：返回字典的所有键。  
     - `values()`：返回字典的所有值。  

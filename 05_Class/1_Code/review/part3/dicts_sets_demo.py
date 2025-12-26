@@ -21,6 +21,14 @@ def dict_operations():
     d = {'name': 'Alice', 'age': 25}
     print('初始字典：', d)
 
+    # 更多创建方式
+    d_from_list = dict([('a', 1), ('b', 2)])
+    print('从列表创建：', d_from_list)
+    d_from_zip = dict(zip(['x', 'y', 'z'], [10, 20, 30]))
+    print('从zip创建：', d_from_zip)
+    d_fromkeys = dict.fromkeys(['key1', 'key2', 'key3'], 'default_value')
+    print('fromkeys创建：', d_fromkeys)
+
     # C/U
     d['city'] = 'Beijing'
     print('d["city"] = "Beijing"：', d)
@@ -95,25 +103,28 @@ def performance_comparison():
     import time
 
     # 创建大数据集
-    large_list = list(range(10000))
-    large_dict = {i: i for i in range(10000)}
+    large_list = list(range(100000))
+    large_dict = {i: i for i in range(100000)}
 
     # 测试查找性能
-    target = 9999
+    target = 99999
+    iterations = 1000
 
     # 列表查找（线性）
-    start = time.time()
-    found_in_list = target in large_list
-    list_time = time.time() - start
+    start = time.perf_counter()
+    for _ in range(iterations):
+        found_in_list = target in large_list
+    list_time = time.perf_counter() - start
 
     # 字典查找（哈希）
-    start = time.time()
-    found_in_dict = target in large_dict
-    dict_time = time.time() - start
+    start = time.perf_counter()
+    for _ in range(iterations):
+        found_in_dict = target in large_dict
+    dict_time = time.perf_counter() - start
 
-    print('查找 {} 在 10000 个元素中：'.format(target))
-    print('列表查找：{}，耗时：{:.6f} 秒'.format(found_in_list, list_time))
-    print('字典查找：{}，耗时：{:.6f} 秒'.format(found_in_dict, dict_time))
+    print('查找 {} 在 100000 个元素中（重复 {} 次）：'.format(target, iterations))
+    print('列表查找：{}，总耗时：{:.6f} 秒'.format(found_in_list, list_time))
+    print('字典查找：{}，总耗时：{:.6f} 秒'.format(found_in_dict, dict_time))
     print('字典查找快 {:.1f} 倍'.format(list_time / dict_time if dict_time > 0 else float('inf')))
     print()
 

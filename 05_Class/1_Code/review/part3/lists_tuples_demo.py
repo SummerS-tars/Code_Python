@@ -134,6 +134,12 @@ def generator_expression_demo():
 def unpacking_demo():
     print('--- 序列解包示例 ---')
     # 基本解包
+    x, y = 1, 2
+    print('x, y = 1, 2 -> x={}, y={}'.format(x, y))
+    
+    x, y, z = (3, 4, 5)
+    print('x, y, z = (3,4,5) -> x={}, y={}, z={}'.format(x, y, z))
+    
     a, b, c = [1, 2, 3]
     print('a, b, c = [1, 2, 3] -> a={}, b={}, c={}'.format(a, b, c))
 
