@@ -1,0 +1,13 @@
+
+# 数据采集与数据集目录
+data_collection/
+data_collection_*/
+
+dataset/
+dataset_*/
+
+# 兼容常见拼写：dateset
+dateset/
+dateset_*/
+
+tmp/
