@@ -6,7 +6,7 @@ DEVICE_ADDR = "10.176.65.211:7469" #
 
 # 2. 当前正在采集的 App 名称。修改此处会自动切换所有读写路径
 # 例如: 'eleme', 'zhifubao', 'alipay', '12306'
-APP_NAME = "feishu"
+APP_NAME = "tencent_meeting"
 
 # 3. 动态生成文件夹路径
 # 采集原始数据：./data_collection_appname
