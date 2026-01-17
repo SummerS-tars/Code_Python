@@ -1,0 +1,11 @@
+Transaction_ID,Branch,Product,Price,Quantity,Date
+101,Beijing_A,Latte,30.0,1,2023-10-01
+102,Shanghai_B,Espresso,25.0,2,2023-10-01
+103,Beijing_A,Cappuccino,32.0,1,2023-10-01
+104,Shenzhen_C,Latte,30.0,3,2023-10-01
+102,Shanghai_B,Espresso,25.0,2,2023-10-01
+105,Beijing_A,Mocha,,2,2023-10-01
+106,Shenzhen_C,Latte,30.0,1,2023-10-01
+107,Shanghai_B,Espresso,25.0,5,2023-10-01
+108,Beijing_A,Latte,30.0,2,2023-10-01
+109,Shenzhen_C,Mocha,,1,2023-10-01
