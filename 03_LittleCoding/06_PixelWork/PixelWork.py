@@ -3,6 +3,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import json
+import os
 import sys
 
 class BeadSelectorGUI:
@@ -12,7 +14,8 @@ class BeadSelectorGUI:
         
         # 1. 加载并准备图片
         try:
-            self.orig_img = Image.open(image_path).convert("RGB")
+            # 保留透明通道，避免透明区域被当作黑色
+            self.orig_img = Image.open(image_path).convert("RGBA")
         except FileNotFoundError:
             print(f"找不到文件: {image_path}")
             sys.exit(1)
@@ -33,8 +36,11 @@ class BeadSelectorGUI:
             resample = resampling_enum.NEAREST  # Pillow>=9
         else:
             resample = getattr(Image, "NEAREST", 0)
-        self.display_img = self.orig_img.resize((display_width, display_height), resample)
-        self.tk_img = ImageTk.PhotoImage(self.display_img)
+        display_img = self.orig_img.resize((display_width, display_height), resample)
+        # 将透明背景合成到白色底上进行显示
+        display_bg = Image.new("RGBA", display_img.size, (255, 255, 255, 255))
+        display_img = Image.alpha_composite(display_bg, display_img)
+        self.tk_img = ImageTk.PhotoImage(display_img.convert("RGB"))
 
         # 2. 初始化移除掩码 (False = 保留, True = 移除)
         self.removed_mask = np.zeros((self.rows, self.cols), dtype=bool)
@@ -153,7 +159,7 @@ class BeadSelectorGUI:
         self.master.destroy()
 
 
-def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix="shinji"):
+def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix="shinji", color_tolerance=8):
     # --- 第一步: 启动交互式选择界面 ---
     root = tk.Tk()
     root.title("拼豆区域选择器 - 点击不需要的背景")
@@ -192,6 +198,12 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
             
             if center_x < width and center_y < height:
                 pixel_color = img.getpixel((center_x, center_y))
+                if isinstance(pixel_color, tuple) and len(pixel_color) == 4:
+                    r_c, g_c, b_c, a_c = pixel_color
+                    if a_c <= 0:
+                        removed_mask[r, c] = True
+                        continue
+                    pixel_color = (r_c, g_c, b_c)
                 grid_colors[r, c] = pixel_color
 
     # 过滤掉标记为 -1 的透明区域，只保留有效颜色用于生成色板
@@ -203,21 +215,214 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
          return
 
     unique_colors = np.unique(valid_colors, axis=0)
+
+    def merge_similar_colors(colors, tolerance):
+        clusters = []
+        color_to_cluster = {}
+
+        for color in colors:
+            color_arr = np.array(color, dtype=float)
+            assigned = None
+            for idx, cluster in enumerate(clusters):
+                if np.linalg.norm(color_arr - cluster["mean"]) <= tolerance:
+                    assigned = idx
+                    break
+            if assigned is None:
+                clusters.append({"mean": color_arr, "count": 1})
+                assigned = len(clusters) - 1
+            else:
+                cluster = clusters[assigned]
+                cluster["mean"] = (cluster["mean"] * cluster["count"] + color_arr) / (cluster["count"] + 1)
+                cluster["count"] += 1
+
+            color_to_cluster[tuple(int(x) for x in color)] = assigned
+
+        merged_colors = [tuple(int(round(x)) for x in cluster["mean"]) for cluster in clusters]
+        return merged_colors, color_to_cluster
+
+    if color_tolerance and color_tolerance > 0:
+        merged_colors, color_to_cluster = merge_similar_colors(unique_colors, color_tolerance)
+        print(f"\n颜色合并阈值: {color_tolerance}，合并后颜色数: {len(merged_colors)} (原始: {len(unique_colors)})")
+    else:
+        merged_colors = [tuple(int(x) for x in color) for color in unique_colors]
+        color_to_cluster = {tuple(int(x) for x in color): idx for idx, color in enumerate(unique_colors)}
     
     # 创建 ID 映射表
     color_map = {}
     id_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     legend_info = []
     
-    print(f"\n检测到 {len(unique_colors)} 种有效颜色 (已排除移除区域):")
-    for i, color in enumerate(unique_colors):
-        color_tuple = tuple(color)
+    print(f"\n检测到 {len(merged_colors)} 种有效颜色 (已排除移除区域):")
+    for i, color in enumerate(merged_colors):
+        color_tuple = tuple(int(x) for x in color)
         cid = id_chars[i] if i < len(id_chars) else str(i)
         color_map[color_tuple] = cid
         
         hex_color = '#{:02x}{:02x}{:02x}'.format(*color)
         print(f"ID: [{cid}] | RGB: {color_tuple} | Hex: {hex_color}")
         legend_info.append((cid, color_tuple, hex_color))
+
+    # --- 额外输出: 保存去除背景后的图片 ---
+    removed_img = img.convert("RGBA")
+    removed_draw = ImageDraw.Draw(removed_img)
+    for r in range(rows):
+        for c in range(cols):
+            if removed_mask[r, c]:
+                x0 = c * bead_size
+                y0 = r * bead_size
+                x1 = x0 + bead_size - 1
+                y1 = y0 + bead_size - 1
+                removed_draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 0))
+
+    save_path_removed = f"{output_prefix}_去背景.png"
+    removed_img.save(save_path_removed)
+    print(f">>> 成功: 去背景图片已保存至: {save_path_removed}")
+
+    # --- 额外输出: 生成融合后的 JSON 像素文件 ---
+    def rgba_hex(color_rgb, alpha=255):
+        return "#{:02X}{:02X}{:02X}{:02X}".format(color_rgb[0], color_rgb[1], color_rgb[2], alpha)
+
+    pixels = []
+    for r in range(rows):
+        for c in range(cols):
+            if removed_mask[r, c]:
+                pixels.append("#00000000")
+                continue
+
+            color_arr = grid_colors[r, c]
+            color_tuple = tuple(int(x) for x in color_arr)
+            cluster_idx = color_to_cluster.get(color_tuple)
+            color = merged_colors[cluster_idx] if cluster_idx is not None else color_tuple
+            pixels.append(rgba_hex(color, 255))
+
+    json_data = {
+        "width": cols,
+        "height": rows,
+        "pixels": pixels
+    }
+
+    save_path_json = f"{output_prefix}_融合像素.json"
+    with open(save_path_json, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, ensure_ascii=False)
+    print(f">>> 成功: 融合像素 JSON 已保存至: {save_path_json}")
+
+    # --- 额外输出: 将 JSON 像素映射到色号并生成最终图纸 ---
+    def hex_to_rgba(hex_color):
+        hex_color = hex_color.lstrip("#")
+        if len(hex_color) == 6:
+            r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
+            a = "FF"
+        else:
+            r, g, b, a = hex_color[0:2], hex_color[2:4], hex_color[4:6], hex_color[6:8]
+        return tuple(int(x, 16) for x in (r, g, b, a))
+
+    def load_palette(palette_path):
+        palette = []
+        with open(palette_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                code, hex_color = parts[0], parts[1]
+                rgb = hex_to_rgba(hex_color + "FF")[:3]
+                palette.append((code, hex_color.lower(), rgb))
+        return palette
+
+    def nearest_palette_color(rgb, palette, cache):
+        if rgb in cache:
+            return cache[rgb]
+        best = None
+        best_dist = float("inf")
+        for code, hex_color, pal_rgb in palette:
+            dist = np.linalg.norm(np.array(rgb) - np.array(pal_rgb))
+            if dist < best_dist:
+                best_dist = dist
+                best = (code, hex_color, pal_rgb)
+        cache[rgb] = best
+        return best
+
+    palette_path = os.path.join(os.path.dirname(__file__), "list.txt")
+    if os.path.exists(palette_path):
+        palette = load_palette(palette_path)
+        if not palette:
+            print(f"色卡清单为空: {palette_path}，跳过色号映射。")
+        else:
+            try:
+                font = ImageFont.truetype("arialbd.ttf", 14)
+            except IOError:
+                font = ImageFont.load_default()
+            palette_cache = {}
+            mapped_cells = []
+            used_palette = {}
+
+            for pix in json_data["pixels"]:
+                r_c, g_c, b_c, a_c = hex_to_rgba(pix)
+                if a_c == 0:
+                    mapped_cells.append(None)
+                    continue
+                nearest = nearest_palette_color((r_c, g_c, b_c), palette, palette_cache)
+                if nearest is None:
+                    mapped_cells.append(None)
+                    continue
+                code, hex_color, pal_rgb = nearest
+                mapped_cells.append((code, hex_color, pal_rgb))
+                used_palette[code] = (hex_color, pal_rgb)
+
+            final_cell_size = 30
+            final_w = cols * final_cell_size
+            final_h = rows * final_cell_size
+            final_img = Image.new("RGB", (final_w, final_h), "white")
+            final_draw = ImageDraw.Draw(final_img)
+
+            for r in range(rows):
+                for c in range(cols):
+                    idx = r * cols + c
+                    x0 = c * final_cell_size
+                    y0 = r * final_cell_size
+                    x1 = x0 + final_cell_size
+                    y1 = y0 + final_cell_size
+
+                    cell = mapped_cells[idx]
+                    if cell is None:
+                        final_draw.rectangle([x0, y0, x1, y1], outline="#e0e0e0")
+                        continue
+
+                    code, hex_color, pal_rgb = cell
+                    final_draw.rectangle([x0, y0, x1, y1], fill=tuple(pal_rgb), outline="#555555")
+                    brightness = (pal_rgb[0] * 0.299 + pal_rgb[1] * 0.587 + pal_rgb[2] * 0.114)
+                    text_color = "white" if brightness < 128 else "black"
+                    final_draw.text((x0 + final_cell_size / 4, y0 + final_cell_size / 4), code, fill=text_color, font=font)
+
+            save_path_final_chart = f"{output_prefix}_最终图纸.png"
+            final_img.save(save_path_final_chart)
+            print(f">>> 成功: 最终图纸已保存至: {save_path_final_chart}")
+
+            used_items = [(code, *used_palette[code]) for code in sorted(used_palette.keys())]
+            if used_items:
+                fig_height = max(2, len(used_items) * 0.7)
+                plt.figure(figsize=(7, fig_height))
+                ax = plt.gca()
+                ax.axis("off")
+                ax.set_title(f"色号对照表 (共{len(used_items)}色)", fontproperties="Microsoft YaHei")
+
+                for idx, (code, hex_color, pal_rgb) in enumerate(used_items):
+                    y = len(used_items) - idx - 1
+                    rect = Rectangle((0, y), 0.8, 0.8, color=np.array(pal_rgb) / 255)
+                    ax.add_patch(rect)
+                    text = f"{code}  {hex_color}"
+                    ax.text(1.0, y + 0.4, text, fontsize=11, va="center", fontproperties="Arial")
+
+                ax.set_xlim(0, 4.5)
+                ax.set_ylim(-0.1, len(used_items) - 0.1)
+                plt.tight_layout()
+                save_path_final_legend = f"{output_prefix}_最终色号对照.png"
+                plt.savefig(save_path_final_legend)
+                print(f">>> 成功: 最终色号对照已保存至: {save_path_final_legend}")
+    else:
+        print(f"未找到色卡清单文件: {palette_path}，跳过色号映射。")
 
     # --- 第三步: 生成最终设计图 ---
     cell_size = 30 # 输出图纸的格子大小
@@ -250,7 +455,9 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
 
             # 绘制有效拼豆区域
             color_arr = grid_colors[r, c]
-            color = tuple(color_arr)
+            color_tuple = tuple(int(x) for x in color_arr)
+            cluster_idx = color_to_cluster.get(color_tuple)
+            color = merged_colors[cluster_idx] if cluster_idx is not None else color_tuple
             cid = color_map.get(color, "?")
             
             # 填充颜色和深灰色边框
@@ -268,24 +475,26 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
     print(f"\n>>> 成功: 设计图纸已保存至: {save_path_chart}")
     
     # --- 第四步: 生成色卡图例 ---
-    if len(unique_colors) > 0:
+    if len(merged_colors) > 0:
         # 根据颜色数量动态调整图例高度
-        fig_height = max(2, len(unique_colors) * 0.6)
-        plt.figure(figsize=(6, fig_height))
-        plt.axis('off')
-        plt.title(f"Mard色卡对照表 (共{len(unique_colors)}色)", fontproperties="Microsoft YaHei")
+        fig_height = max(2, len(merged_colors) * 0.7)
+        plt.figure(figsize=(7, fig_height))
+        ax = plt.gca()
+        ax.axis('off')
+        ax.set_title(f"Mard色卡对照表 (共{len(merged_colors)}色)", fontproperties="Microsoft YaHei")
         
         for idx, (cid, rgb, hex_c) in enumerate(legend_info):
+            y = len(merged_colors) - idx - 1
             # 绘制色块
-            rect = Rectangle((0, len(unique_colors) - idx - 1), 0.8, 0.8, color=np.array(rgb)/255)
-            plt.gca().add_patch(rect)
+            rect = Rectangle((0, y), 0.8, 0.8, color=np.array(rgb) / 255)
+            ax.add_patch(rect)
             # 绘制文字说明
-            text = f"ID: [{cid}]  RGB:{rgb}"
-            plt.text(1.0, len(unique_colors) - idx - 0.6, text, fontsize=12, va='center', fontproperties="Arial")
-            plt.text(3.5, len(unique_colors) - idx - 0.6, "<- 对应你的Mard色卡", fontsize=10, color="gray", va='center', fontproperties="Microsoft YaHei")
+            text = f"ID: [{cid}]  RGB: {rgb}"
+            ax.text(1.0, y + 0.4, text, fontsize=11, va='center', fontproperties="Arial")
+            ax.text(3.9, y + 0.4, "<- 对应你的Mard色卡", fontsize=9, color="gray", va='center', fontproperties="Microsoft YaHei")
             
-        plt.xlim(0, 5)
-        plt.ylim(0, len(unique_colors))
+        ax.set_xlim(0, 5.2)
+        ax.set_ylim(-0.1, len(merged_colors) - 0.1)
         plt.tight_layout()
         save_path_legend = f"{output_prefix}_色卡对照.png"
         plt.savefig(save_path_legend)
@@ -296,6 +505,6 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
 # --- 执行部分 ---
 if __name__ == "__main__":
     # 请确保文件名正确
-    image_file = "C:\\Users\\Sum\\Desktop\\Transport\\真嗣原图框选.jpg" 
+    image_file = "E:\\_ComputerLearning\\7_Programming_Python\\Code_Python\\03_LittleCoding\\06_PixelWork\\真嗣拼豆_去背景.png"
     # 运行主函数，output_prefix 可以修改为你想要的文件名前缀
-    generate_bead_pattern_with_selection(image_file, bead_size=20, output_prefix="真嗣拼豆")
+    generate_bead_pattern_with_selection(image_file, bead_size=20, output_prefix="真嗣拼豆", color_tolerance=8)
