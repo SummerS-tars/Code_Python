@@ -90,7 +90,7 @@ class BeadSelectorGUI:
         
         instruction_label = tk.Label(
             self.btn_frame,
-            text="操作指南: 点击网格以标记/取消标记要移除的区域 (红色X表示移除)\n下一步: 完成筛选后点击“完成选择并生成图纸”进入生成阶段",
+            text="操作指南: 点击网格以标记/取消标记要移除的区域 (红色X表示移除)\n按住左键拖动可快速禁用多个格子\n下一步: 完成筛选后点击“完成选择并生成图纸”进入生成阶段",
             font=("微软雅黑", 10),
             justify="center"
         )
@@ -100,10 +100,16 @@ class BeadSelectorGUI:
         btn_finish.pack(pady=(5, 0))
         
         # 绑定鼠标点击事件
-        self.canvas.bind("<Button-1>", self.on_click)
+        self.canvas.bind("<ButtonPress-1>", self.on_button_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_button_release)
         self.canvas.bind("<MouseWheel>", self.on_mousewheel)
         self.canvas.bind("<Button-4>", self.on_mousewheel)
         self.canvas.bind("<Button-5>", self.on_mousewheel)
+
+        self.drag_active = False
+        self.drag_moved = False
+        self.last_drag_cell = None
         
 
     def draw_grid_lines(self, w, h):
@@ -115,18 +121,46 @@ class BeadSelectorGUI:
             y = r * self.display_bead_size
             self.canvas.create_line(0, y, w, y, fill="cyan", width=1, dash=(4, 4))
 
-    def on_click(self, event):
-        # 将点击坐标映射到网格行列
+    def get_cell_from_event(self, event):
         canvas_x = self.canvas.canvasx(event.x)
         canvas_y = self.canvas.canvasy(event.y)
         c = int(canvas_x // self.display_bead_size)
         r = int(canvas_y // self.display_bead_size)
-
-        # 检查边界
         if 0 <= r < self.rows and 0 <= c < self.cols:
-            # 切换状态
+            return r, c
+        return None
+
+    def on_button_press(self, event):
+        self.drag_active = True
+        self.drag_moved = False
+        self.last_drag_cell = None
+
+    def on_drag(self, event):
+        if not self.drag_active:
+            return
+        cell = self.get_cell_from_event(event)
+        if cell is None:
+            return
+        if cell == self.last_drag_cell:
+            return
+        self.drag_moved = True
+        self.last_drag_cell = cell
+        r, c = cell
+        if not self.removed_mask[r, c]:
+            self.removed_mask[r, c] = True
+            self.redraw_block_overlay(r, c)
+
+    def on_button_release(self, event):
+        if not self.drag_active:
+            return
+        cell = self.get_cell_from_event(event)
+        if cell is not None and not self.drag_moved:
+            r, c = cell
             self.removed_mask[r, c] = not self.removed_mask[r, c]
             self.redraw_block_overlay(r, c)
+        self.drag_active = False
+        self.drag_moved = False
+        self.last_drag_cell = None
 
     def on_mousewheel(self, event):
         # Windows: event.delta 正/负；Linux: Button-4/5
@@ -604,13 +638,24 @@ if __name__ == "__main__":
     #     color_match_space="lab"
     # )
     
+    # # 请确保文件名正确
+    # image_file = "C:/Users/Sum/Desktop/Transport/丽原图框选.JPG"
+    # # 运行主函数，output_prefix 可以修改为你想要的文件名前缀
+    # generate_bead_pattern_with_selection(
+    #     image_file, 
+    #     bead_size=20, 
+    #     output_prefix="丽拼豆", 
+    #     color_tolerance=8,
+    #     color_match_space="lab"
+    # )
+    
     # 请确保文件名正确
-    image_file = "C:/Users/Sum/Desktop/Transport/IMG_2211.JPG"
+    image_file = "C:/Users/Sum/Desktop/Transport/薰原图框选.JPG"
     # 运行主函数，output_prefix 可以修改为你想要的文件名前缀
     generate_bead_pattern_with_selection(
         image_file, 
         bead_size=20, 
-        output_prefix="丽拼豆", 
+        output_prefix="薰拼豆", 
         color_tolerance=8,
         color_match_space="lab"
     )
