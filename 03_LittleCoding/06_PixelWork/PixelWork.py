@@ -2,6 +2,7 @@ import tkinter as tk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import sys
 
 class BeadSelectorGUI:
@@ -27,7 +28,12 @@ class BeadSelectorGUI:
         display_height = int(self.height * self.scale)
         
         # 使用最近邻插值放大，保持像素感
-        self.display_img = self.orig_img.resize((display_width, display_height), Image.NEAREST)
+        resampling_enum = getattr(Image, "Resampling", None)
+        if resampling_enum is not None:
+            resample = resampling_enum.NEAREST  # Pillow>=9
+        else:
+            resample = getattr(Image, "NEAREST", 0)
+        self.display_img = self.orig_img.resize((display_width, display_height), resample)
         self.tk_img = ImageTk.PhotoImage(self.display_img)
 
         # 2. 初始化移除掩码 (False = 保留, True = 移除)
@@ -35,9 +41,39 @@ class BeadSelectorGUI:
         self.is_finished = False
 
         # 3. 设置 GUI 组件
-        self.canvas = tk.Canvas(master, width=display_width, height=display_height, cursor="crosshair")
-        self.canvas.pack(side=tk.TOP)
+        # 允许窗口调整大小，并为大图提供滚动查看
+        master.resizable(True, True)
+
+        # 计算画布初始尺寸（不超过屏幕大小）
+        screen_w = master.winfo_screenwidth()
+        screen_h = master.winfo_screenheight()
+        canvas_w = min(display_width, screen_w - 120)
+        canvas_h = min(display_height, screen_h - 220)
+
+        canvas_frame = tk.Frame(master)
+        canvas_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.canvas = tk.Canvas(
+            canvas_frame,
+            width=canvas_w,
+            height=canvas_h,
+            cursor="crosshair",
+            highlightthickness=0
+        )
+
+        v_scroll = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        h_scroll = tk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        v_scroll.grid(row=0, column=1, sticky="ns")
+        h_scroll.grid(row=1, column=0, sticky="ew")
+
+        canvas_frame.rowconfigure(0, weight=1)
+        canvas_frame.columnconfigure(0, weight=1)
+
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
+        self.canvas.config(scrollregion=(0, 0, display_width, display_height))
         
         # 绘制辅助网格线
         self.draw_grid_lines(display_width, display_height)
@@ -46,7 +82,12 @@ class BeadSelectorGUI:
         self.btn_frame = tk.Frame(master, pady=10)
         self.btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
-        instruction_label = tk.Label(self.btn_frame, text="操作指南: 点击网格以标记/取消标记要移除的区域 (红色X表示移除)", font=("微软雅黑", 10))
+        instruction_label = tk.Label(
+            self.btn_frame,
+            text="操作指南: 点击网格以标记/取消标记要移除的区域 (红色X表示移除)\n下一步: 完成筛选后点击“完成选择并生成图纸”进入生成阶段",
+            font=("微软雅黑", 10),
+            justify="center"
+        )
         instruction_label.pack()
 
         btn_finish = tk.Button(self.btn_frame, text="完成选择并生成图纸", command=self.finish, bg="#4CAF50", fg="white", font=("微软雅黑", 12, "bold"), padx=20, pady=5)
@@ -54,6 +95,9 @@ class BeadSelectorGUI:
         
         # 绑定鼠标点击事件
         self.canvas.bind("<Button-1>", self.on_click)
+        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        self.canvas.bind("<Button-4>", self.on_mousewheel)
+        self.canvas.bind("<Button-5>", self.on_mousewheel)
         
 
     def draw_grid_lines(self, w, h):
@@ -67,14 +111,24 @@ class BeadSelectorGUI:
 
     def on_click(self, event):
         # 将点击坐标映射到网格行列
-        c = int(event.x // self.display_bead_size)
-        r = int(event.y // self.display_bead_size)
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
+        c = int(canvas_x // self.display_bead_size)
+        r = int(canvas_y // self.display_bead_size)
 
         # 检查边界
         if 0 <= r < self.rows and 0 <= c < self.cols:
             # 切换状态
             self.removed_mask[r, c] = not self.removed_mask[r, c]
             self.redraw_block_overlay(r, c)
+
+    def on_mousewheel(self, event):
+        # Windows: event.delta 正/负；Linux: Button-4/5
+        if hasattr(event, "delta") and event.delta:
+            direction = -1 if event.delta > 0 else 1
+        else:
+            direction = -1 if event.num == 4 else 1
+        self.canvas.yview_scroll(direction, "units")
 
     def redraw_block_overlay(self, r, c):
         # 计算画布上的区块坐标
@@ -223,7 +277,7 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
         
         for idx, (cid, rgb, hex_c) in enumerate(legend_info):
             # 绘制色块
-            rect = plt.Rectangle((0, len(unique_colors) - idx - 1), 0.8, 0.8, color=np.array(rgb)/255)
+            rect = Rectangle((0, len(unique_colors) - idx - 1), 0.8, 0.8, color=np.array(rgb)/255)
             plt.gca().add_patch(rect)
             # 绘制文字说明
             text = f"ID: [{cid}]  RGB:{rgb}"
