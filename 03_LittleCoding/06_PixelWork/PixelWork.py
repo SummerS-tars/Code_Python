@@ -159,7 +159,15 @@ class BeadSelectorGUI:
         self.master.destroy()
 
 
-def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix="shinji", color_tolerance=8):
+def generate_bead_pattern_with_selection(
+    image_path,
+    bead_size=20,
+    output_prefix="shinji",
+    color_tolerance=8,
+    palette_file=None,
+    color_match_space="lab",
+    rgb_weights=(1.0, 1.0, 1.0)
+):
     # --- 第一步: 启动交互式选择界面 ---
     root = tk.Tk()
     root.title("拼豆区域选择器 - 点击不需要的背景")
@@ -306,6 +314,27 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
         json.dump(json_data, f, ensure_ascii=False)
     print(f">>> 成功: 融合像素 JSON 已保存至: {save_path_json}")
 
+    def get_text_size(draw_obj, text, font_obj):
+        if hasattr(draw_obj, "textbbox"):
+            box = draw_obj.textbbox((0, 0), text, font=font_obj)
+            return box[2] - box[0], box[3] - box[1]
+        return draw_obj.textsize(text, font=font_obj)
+
+    def draw_grid_labels(draw_obj, rows_count, cols_count, cell_sz, margin_sz, font_obj):
+        for c in range(cols_count):
+            label = str(c + 1)
+            text_w, text_h = get_text_size(draw_obj, label, font_obj)
+            x_center = margin_sz + c * cell_sz + cell_sz / 2
+            draw_obj.text((x_center - text_w / 2, margin_sz - text_h - 4), label, fill="#333333", font=font_obj)
+            draw_obj.text((x_center - text_w / 2, margin_sz + rows_count * cell_sz + 4), label, fill="#333333", font=font_obj)
+
+        for r in range(rows_count):
+            label = str(r + 1)
+            text_w, text_h = get_text_size(draw_obj, label, font_obj)
+            y_center = margin_sz + r * cell_sz + cell_sz / 2
+            draw_obj.text((margin_sz - text_w - 6, y_center - text_h / 2), label, fill="#333333", font=font_obj)
+            draw_obj.text((margin_sz + cols_count * cell_sz + 6, y_center - text_h / 2), label, fill="#333333", font=font_obj)
+
     # --- 额外输出: 将 JSON 像素映射到色号并生成最终图纸 ---
     def hex_to_rgba(hex_color):
         hex_color = hex_color.lstrip("#")
@@ -331,20 +360,60 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
                 palette.append((code, hex_color.lower(), rgb))
         return palette
 
+    def srgb_to_linear(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    def rgb_to_lab(rgb):
+        r, g, b = (srgb_to_linear(v) for v in rgb)
+        # sRGB D65
+        x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375
+        y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750
+        z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041
+
+        # D65 白点
+        x /= 0.95047
+        y /= 1.00000
+        z /= 1.08883
+
+        def f(t):
+            return t ** (1 / 3) if t > 0.008856 else (7.787 * t + 16 / 116)
+
+        fx, fy, fz = f(x), f(y), f(z)
+        l = 116 * fy - 16
+        a = 500 * (fx - fy)
+        b = 200 * (fy - fz)
+        return (l, a, b)
+
+    def color_distance(rgb, pal_rgb, space, weights):
+        if space == "lab":
+            lab1 = rgb_to_lab(rgb)
+            lab2 = rgb_to_lab(pal_rgb)
+            return np.linalg.norm(np.array(lab1) - np.array(lab2))
+        w_r, w_g, w_b = weights
+        diff = np.array(rgb) - np.array(pal_rgb)
+        return np.linalg.norm(np.array([diff[0] * w_r, diff[1] * w_g, diff[2] * w_b]))
+
     def nearest_palette_color(rgb, palette, cache):
         if rgb in cache:
             return cache[rgb]
         best = None
         best_dist = float("inf")
         for code, hex_color, pal_rgb in palette:
-            dist = np.linalg.norm(np.array(rgb) - np.array(pal_rgb))
+            dist = color_distance(rgb, pal_rgb, color_match_space, rgb_weights)
             if dist < best_dist:
                 best_dist = dist
                 best = (code, hex_color, pal_rgb)
         cache[rgb] = best
         return best
 
-    palette_path = os.path.join(os.path.dirname(__file__), "list.txt")
+    if palette_file is None:
+        preferred = os.path.join(os.path.dirname(__file__), "list2.txt")
+        fallback = os.path.join(os.path.dirname(__file__), "list.txt")
+        palette_path = preferred if os.path.exists(preferred) else fallback
+    else:
+        palette_path = os.path.join(os.path.dirname(__file__), palette_file)
+    print(f"使用色卡清单: {palette_path}")
     if os.path.exists(palette_path):
         palette = load_palette(palette_path)
         if not palette:
@@ -371,17 +440,18 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
                 mapped_cells.append((code, hex_color, pal_rgb))
                 used_palette[code] = (hex_color, pal_rgb)
 
-            final_cell_size = 30
-            final_w = cols * final_cell_size
-            final_h = rows * final_cell_size
+            final_cell_size = 40
+            margin_size = max(36, int(final_cell_size * 0.9))
+            final_w = cols * final_cell_size + margin_size * 2
+            final_h = rows * final_cell_size + margin_size * 2
             final_img = Image.new("RGB", (final_w, final_h), "white")
             final_draw = ImageDraw.Draw(final_img)
 
             for r in range(rows):
                 for c in range(cols):
                     idx = r * cols + c
-                    x0 = c * final_cell_size
-                    y0 = r * final_cell_size
+                    x0 = margin_size + c * final_cell_size
+                    y0 = margin_size + r * final_cell_size
                     x1 = x0 + final_cell_size
                     y1 = y0 + final_cell_size
 
@@ -394,7 +464,10 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
                     final_draw.rectangle([x0, y0, x1, y1], fill=tuple(pal_rgb), outline="#555555")
                     brightness = (pal_rgb[0] * 0.299 + pal_rgb[1] * 0.587 + pal_rgb[2] * 0.114)
                     text_color = "white" if brightness < 128 else "black"
-                    final_draw.text((x0 + final_cell_size / 4, y0 + final_cell_size / 4), code, fill=text_color, font=font)
+                    text_w, text_h = get_text_size(final_draw, code, font)
+                    final_draw.text((x0 + (final_cell_size - text_w) / 2, y0 + (final_cell_size - text_h) / 2), code, fill=text_color, font=font)
+
+            draw_grid_labels(final_draw, rows, cols, final_cell_size, margin_size, font)
 
             save_path_final_chart = f"{output_prefix}_最终图纸.png"
             final_img.save(save_path_final_chart)
@@ -425,9 +498,10 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
         print(f"未找到色卡清单文件: {palette_path}，跳过色号映射。")
 
     # --- 第三步: 生成最终设计图 ---
-    cell_size = 30 # 输出图纸的格子大小
-    out_img_w = cols * cell_size
-    out_img_h = rows * cell_size
+    cell_size = 40  # 输出图纸的格子大小
+    margin_size = max(36, int(cell_size * 0.9))
+    out_img_w = cols * cell_size + margin_size * 2
+    out_img_h = rows * cell_size + margin_size * 2
     # 图纸背景设为白色
     out_img = Image.new("RGB", (out_img_w, out_img_h), "white")
     draw = ImageDraw.Draw(out_img)
@@ -440,8 +514,8 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
 
     for r in range(rows):
         for c in range(cols):
-            x0 = c * cell_size
-            y0 = r * cell_size
+            x0 = margin_size + c * cell_size
+            y0 = margin_size + r * cell_size
             x1 = x0 + cell_size
             y1 = y0 + cell_size
 
@@ -468,7 +542,10 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
             text_color = "white" if brightness < 128 else "black"
             
             # 简单居中文字
-            draw.text((x0 + cell_size/3, y0 + cell_size/4), cid, fill=text_color, font=font)
+        text_w, text_h = get_text_size(draw, cid, font)
+        draw.text((x0 + (cell_size - text_w) / 2, y0 + (cell_size - text_h) / 2), cid, fill=text_color, font=font)
+
+    draw_grid_labels(draw, rows, cols, cell_size, margin_size, font)
 
     save_path_chart = f"{output_prefix}_设计图纸.png"
     out_img.save(save_path_chart)
@@ -504,7 +581,37 @@ def generate_bead_pattern_with_selection(image_path, bead_size=20, output_prefix
 
 # --- 执行部分 ---
 if __name__ == "__main__":
+    # # 请确保文件名正确
+    # image_file = "E:\\_ComputerLearning\\7_Programming_Python\\Code_Python\\03_LittleCoding\\06_PixelWork\\真嗣拼豆_去背景.png"
+    # # 运行主函数，output_prefix 可以修改为你想要的文件名前缀
+    # generate_bead_pattern_with_selection(
+    #     image_file, 
+    #     bead_size=20, 
+    #     output_prefix="真嗣拼豆v2", 
+    #     color_tolerance=8,
+    #     color_match_space="rgb"
+    # )
+    
+    
+    # # 请确保文件名正确
+    # image_file = "E:/_ComputerLearning/7_Programming_Python/Code_Python/03_LittleCoding/06_PixelWork/明日香拼豆_去背景.png"
+    # # 运行主函数，output_prefix 可以修改为你想要的文件名前缀
+    # generate_bead_pattern_with_selection(
+    #     image_file, 
+    #     bead_size=20, 
+    #     output_prefix="明日香拼豆", 
+    #     color_tolerance=4,
+    #     color_match_space="lab"
+    # )
+    
     # 请确保文件名正确
-    image_file = "E:\\_ComputerLearning\\7_Programming_Python\\Code_Python\\03_LittleCoding\\06_PixelWork\\真嗣拼豆_去背景.png"
+    image_file = "C:/Users/Sum/Desktop/Transport/IMG_2211.JPG"
     # 运行主函数，output_prefix 可以修改为你想要的文件名前缀
-    generate_bead_pattern_with_selection(image_file, bead_size=20, output_prefix="真嗣拼豆", color_tolerance=8)
+    generate_bead_pattern_with_selection(
+        image_file, 
+        bead_size=20, 
+        output_prefix="丽拼豆", 
+        color_tolerance=8,
+        color_match_space="lab"
+    )
+    
