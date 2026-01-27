@@ -1,0 +1,6 @@
+{
+    "val_ratio": 0.125,
+    "prob_pick_single_from_small_multi": 0.4,
+    "small_group_threshold": 3,
+    "random_seed": 42
+}
